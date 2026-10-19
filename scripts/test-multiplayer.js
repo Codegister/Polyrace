@@ -974,6 +974,142 @@ addTest("Backing out of the game's track screen reopens Host", () => {
   );
 });
 
+addTest("Only the host can start a race, and only with a track", () => {
+  const room = core.createRoom({
+    selfId: "p1",
+    name: "Host",
+    settings: { track: "japan.track" },
+  });
+  room.join("ABCDE");
+  ensure(room.snapshot().isHost === true, "p1 is alone, so it hosts");
+  ensure(room.snapshot().phase === "lobby", "rooms start in the lobby phase");
+
+  // A guest that knows the host cannot start, locally or by broadcast.
+  const guest = core.createRoom({ selfId: "p2", name: "Guest" });
+  guest.join("ABCDE");
+  guest.handleMessage("p1", { t: "hello", name: "Host" });
+  ensure(guest.snapshot().isHost === false, "p1 is the host for the guest");
+  ensure(guest.beginRace() === null, "a guest must not be able to start");
+  ensure(guest.snapshot().phase === "lobby", "a refused start leaves the phase alone");
+
+  // A third peer's start message is ignored even if it claims a track.
+  const peer2 = core.createRoom({ selfId: "p5", name: "Peer" });
+  peer2.join("ABCDE");
+  peer2.handleMessage("p1", { t: "hello", name: "Host" });
+  peer2.handleMessage("p2", { t: "hello", name: "Guest" });
+  const applied = peer2.handleMessage("p2", { t: "start", track: "x.track" });
+  ensure(applied === false, "a non-host start must not change state");
+  ensure(peer2.snapshot().phase === "lobby", "phase must stay in the lobby");
+
+  // The host's start message carries the track and moves everyone to racing.
+  ensure(
+    guest.handleMessage("p1", { t: "start", track: "japan.track" }) === true,
+    "the host start should be applied"
+  );
+  ensure(guest.snapshot().phase === "racing", "guest enters the racing phase");
+  ensure(guest.snapshot().raceTrack === "japan.track", "guest learns the track");
+
+  const message = room.beginRace();
+  ensure(message !== null, "the host should be able to start");
+  ensure(
+    message.t === "start" && message.track === "japan.track",
+    `start payload: ${JSON.stringify(message)}`
+  );
+  ensure(room.snapshot().phase === "racing", "host enters the racing phase");
+  ensure(room.snapshot().raceTrack === "japan.track", "host snapshot carries the track");
+
+  // Without a track there is nothing for peers to open, so start is refused.
+  const noTrack = core.createRoom({ selfId: "p1", name: "Host" });
+  noTrack.join("ABCDE");
+  ensure(noTrack.beginRace() === null, "no track means no start");
+  ensure(noTrack.snapshot().phase === "lobby", "phase unchanged without a track");
+
+  // Leaving resets the race so a rejoin starts from the lobby.
+  room.leave();
+  ensure(room.snapshot().phase === "lobby", "leave returns to the lobby phase");
+  ensure(room.snapshot().raceTrack === null, "leave clears the race track");
+});
+
+addTest("Lobby gives the host a Start Race control that opens the chosen track", async () => {
+  const trackData = JSON.parse(
+    require("fs").readFileSync(
+      path.join(__dirname, "..", "multiplayer", "tracks.json"),
+      "utf8"
+    )
+  );
+  const { container, windowStub } = bootMultiplayerUi({
+    fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve(trackData) }),
+  });
+  const ui = windowStub.document.getElementById("ui");
+  const net = windowStub.PolyTrackNet;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Host dialog: choose Japan through the game's own track screen.
+  findTile(container, "Multiplayer").listeners.click[0]();
+  ui.querySelector(".mp-overlay")
+    .querySelectorAll(".mp-button")
+    .find((b) => b.textContent === "Host")
+    .listeners.click[0]();
+  ui.querySelector(".mp-track-tile").listeners.click[0]();
+
+  let game = buildGameTrackScreen(windowStub, ["Japan"]);
+  ui.appendChild(game.screen);
+  net.watchGameTrackScreen();
+  game.screen.listeners.click[0]({
+    target: game.cards.Japan.querySelector("button"),
+    preventDefault() {},
+    stopPropagation() {},
+  });
+
+  // Hosting opens the lobby; the host is alone, so the room elects it.
+  ui.querySelector(".mp-overlay").querySelector(".mp-start").listeners.click[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const lobby = ui.querySelector(".mp-overlay").querySelector(".mp-window");
+  ensure(
+    lobby.querySelector(".mp-title").textContent === "Hosting Multiplayer Game",
+    `lobby title: ${lobby.querySelector(".mp-title").textContent}`
+  );
+  const startRace = lobby
+    .querySelectorAll(".mp-button")
+    .find((b) => b.textContent === "Start Race");
+  ensure(startRace !== undefined, "the host lobby needs a Start Race button");
+  ensure(startRace.disabled === false, "Start Race enables once a track is chosen");
+
+  // Starting opens the game's Play screen and clicks the chosen card.
+  let playClicks = 0;
+  const playTile = findTile(container, "Play");
+  playTile.listeners.click = [
+    () => {
+      playClicks += 1;
+    },
+  ];
+  startRace.listeners.click[0]();
+  ensure(playClicks === 1, "Start Race should open the game's Play screen");
+  ensure(
+    net.room.snapshot().phase === "racing",
+    "starting should move the room to the racing phase"
+  );
+
+  // The stub does not remove the screen the way the game does, and
+  // document.querySelector() would otherwise find the stale one.
+  game.screen.remove();
+  game = buildGameTrackScreen(windowStub, ["Japan", "Snow Park"]);
+  ui.appendChild(game.screen);
+  let started = 0;
+  game.cards.Japan
+    .querySelector("button")
+    .addEventListener("click", () => {
+      started += 1;
+    });
+  net.watchGameTrackScreen();
+  ensure(started === 1, `the host's track should start by itself (started=${started})`);
+
+  // Hosting opened a real BroadcastChannel, which would otherwise keep the
+  // Node process alive after the suite finishes.
+  net.leave();
+});
+
 addTest("Menu entry is injected before Play, idempotently", () => {
   const { container, windowStub } = bootMultiplayerUi();
 
@@ -1071,6 +1207,19 @@ addTest("Same-browser transport relays between two clients", async () => {
 
   a.close();
   b.close();
+});
+
+addTest("Vendored Ably SDK is present, parses, and is where the transport looks", () => {
+  const fs = require("fs");
+  const vm = require("vm");
+  const transport = require(path.join(__dirname, "..", "multiplayer", "transport-ably.js"));
+  const file = path.join(__dirname, "..", transport.sdkPath);
+  ensure(fs.existsSync(file), `${transport.sdkPath} is missing`);
+  const src = fs.readFileSync(file, "utf8");
+  ensure(src.length > 100000, `unexpectedly small SDK (${src.length} bytes)`);
+  ensure(/Ably JavaScript Library v2\./.test(src), "file does not look like the Ably v2 browser build");
+  // Parses without executing: a syntax error here would break every online room.
+  new vm.Script(src, { filename: "ably.min.js" });
 });
 
 (async () => {

@@ -3,10 +3,16 @@
 Live multiplayer for the PolyTrack 0.5.2 mirror: host a race, share a 5-character
 invite code, and race the same track together.
 
-Status: **transport, lobby, presence and state streaming are implemented and
-tested. In-world opponent cars are not rendered yet** — see
+Status: **transport, lobby, presence, host-start and state streaming are
+implemented and tested. In-world opponent cars are not rendered yet** — see
 [Remaining work](#remaining-work) for exactly what is missing and why it is not
 shipped half-finished.
+
+> **Cross-device play needs an Ably key.** Without one the only transport is
+> `BroadcastChannel`, which reaches tabs of *one* browser and nothing else. Two
+> players on two machines therefore never appear in each other's roster: the
+> code is accepted, the lobby opens, and the room stays empty. See
+> [Enabling real online play](#enabling-real-online-play-ably).
 
 ## What works today
 
@@ -17,6 +23,9 @@ shipped half-finished.
 - Capacity of 16 players, matching PolyTrack 0.6.0's published limit.
 - Live state streaming at 12.5 Hz per player: position, orientation, speed,
   checkpoint index, brake lights.
+- **Host Start Race**: the host's `start` message puts every peer on the chosen
+  track by driving the game's own track screen (Play → matching card). Only the
+  host can start, and only once a track is chosen.
 - Two transports:
   - `local` — `BroadcastChannel` between tabs/windows of the same browser.
     Works with no account, no key, no network.
@@ -84,12 +93,12 @@ protocol end to end but not real internet play.
 
 1. Create an Ably app and an API key scoped to **publish/subscribe on
    `polytrack-mp:*` only**. Treat it as public — it ships to the browser.
-2. Vendor the browser SDK (it is loaded lazily, only when a key is set):
+2. The browser SDK is already vendored at `multiplayer/vendor/ably.min.js`
+   (Ably JS 2.29.0, Apache-2.0) and is loaded lazily, only when a key is set. To
+   update it:
 
    ```bash
-   npm install ably@2
-   mkdir -p multiplayer/vendor
-   cp node_modules/ably/build/ably.min.js multiplayer/vendor/ably.min.js
+   curl -sSL -o multiplayer/vendor/ably.min.js https://unpkg.com/ably@2/build/ably.min.js
    ```
 
 3. Put the key in `multiplayer/config.js`:
@@ -100,8 +109,9 @@ protocol end to end but not real internet play.
 
 4. `npm run build` and redeploy.
 
-Without a key the UI says online play is unconfigured and silently uses the
-tab transport, so an unconfigured deployment degrades instead of failing.
+Without a key the lobby shows `Same-browser tabs only until an Ably key is
+configured.` and uses the tab transport, so an unconfigured deployment degrades
+instead of failing — but players on different devices will not see each other.
 
 ## How it hooks into the closed 0.5.2 build
 

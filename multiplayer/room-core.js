@@ -99,6 +99,12 @@
     // id -> {id, name, lastSeen, state}
     var players = new Map();
 
+    // Race phase is host-driven: "lobby" until the host starts, then "racing"
+    // on every peer with the track the host picked. Kept outside `players` so a
+    // late joiner cannot resurrect a finished race before the host sends it.
+    var phase = "lobby";
+    var raceTrack = null;
+
     function emit() {
       onChange(snapshot());
     }
@@ -175,6 +181,8 @@
       });
       var host = hostId();
       return {
+        phase: phase,
+        raceTrack: raceTrack,
         roomCode: roomCode,
         selfId: selfId,
         selfName: selfName,
@@ -226,6 +234,8 @@
 
       join: function (code) {
         roomCode = code;
+        phase = "lobby";
+        raceTrack = null;
         players.clear();
         ensureSelf();
         emit();
@@ -235,6 +245,8 @@
       leave: function () {
         var wasInRoom = roomCode !== null;
         roomCode = null;
+        phase = "lobby";
+        raceTrack = null;
         players.clear();
         if (wasInRoom) emit();
       },
@@ -264,6 +276,14 @@
           case "settings":
             if (fromId === hostId()) {
               settings = normalizeSettings(message.s);
+              changed = true;
+            }
+            break;
+          case "start":
+            // Only the host's start counts, and only for a track it names.
+            if (fromId === hostId() && typeof message.track === "string" && message.track) {
+              phase = "racing";
+              raceTrack = message.track;
               changed = true;
             }
             break;
@@ -308,6 +328,19 @@
 
       bye: function () {
         return { t: "bye", name: selfName };
+      },
+
+      /**
+       * Starts the race locally (host only) and returns the payload to
+       * broadcast. Refuses when no track has been chosen, because every peer
+       * needs a track it can actually open.
+       */
+      beginRace: function () {
+        if (hostId() !== selfId || !settings.track) return null;
+        phase = "racing";
+        raceTrack = settings.track;
+        emit();
+        return { t: "start", track: settings.track };
       },
 
       snapshot: snapshot,

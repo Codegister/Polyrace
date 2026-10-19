@@ -213,6 +213,7 @@
   function handlePayload(from, payload) {
     if (!payload || typeof payload !== "object") return;
     room.handleMessage(from, payload);
+    if (payload.t === "start") startRaceOnTrack(payload.track);
     if (!transport) return;
     if (payload.t === "hello") {
       transport.send({ t: "welcome", name: selfName });
@@ -853,7 +854,7 @@
 
   // --- track picker (reuses the game's own Play-menu screen) ----------------
 
-  var trackPick = { active: false, bound: null, seen: false };
+  var trackPick = { active: false, bound: null, seen: false, pending: null };
 
   function closestWithClass(node, className) {
     var current = node;
@@ -943,12 +944,70 @@
     if (buttons.length) buttons[0].click();
   }
 
+  /**
+   * Sends every player to the host's track by driving the game's own track
+   * screen: open the Play menu, then click the matching card. Our capture-phase
+   * interceptor is switched off first, so the game's real "start this track"
+   * handler runs and the race begins normally.
+   */
+  function startRaceOnTrack(track) {
+    if (!track) return;
+    var container = document.querySelector('.menu > .main-buttons-container');
+    var play = container ? findTileByIcon(container, 'play.svg') : null;
+    if (!play) {
+      // The player is not on the main menu (garage, results screen, ...).
+      status = "error";
+      statusDetail =
+        "Race started on " + prettyTrackName(track) + " — open Play and pick that track";
+      openLobby();
+      return;
+    }
+    trackPick.active = false;
+    trackPick.seen = false;
+    trackPick.pending = { track: track, deadline: Date.now() + 8000 };
+    closeOverlay();
+    play.click();
+  }
+
+  /** Clicks the track card whose title matches the host's file name. */
+  function startPendingRace(screenNode) {
+    var card = findTrackCard(screenNode, trackPick.pending.track);
+    if (card) {
+      trackPick.pending = null;
+      // The game binds its start handler to the card's button, so click that
+      // when it exists rather than assuming the wrapper is interactive.
+      var target = card.querySelector("button") || card;
+      target.click();
+      return true;
+    }
+    if (Date.now() > trackPick.pending.deadline) {
+      var wanted = prettyTrackName(trackPick.pending.track);
+      trackPick.pending = null;
+      status = "error";
+      statusDetail = 'Track "' + wanted + '" is not in this player\'s list';
+      closeGameTrackScreen();
+      openLobby();
+    }
+    return false;
+  }
+
+  function findTrackCard(screenNode, track) {
+    var cards = screenNode.querySelectorAll('.track');
+    for (var i = 0; i < cards.length; i++) {
+      var titleNode = cards[i].querySelector('.track-title p');
+      if (!titleNode) continue;
+      if (matchTrackFile(titleNode.textContent) === track) return cards[i];
+    }
+    return null;
+  }
+
   /** Keeps our state in step with the game's screen appearing and closing. */
   function watchGameTrackScreen() {
     var screenNode = document.querySelector('.track-selection');
     if (screenNode) {
       trackPick.seen = true;
       if (trackPick.bound !== screenNode) bindGameTrackScreen(screenNode);
+      if (trackPick.pending) startPendingRace(screenNode);
       return;
     }
     trackPick.bound = null;
@@ -1028,6 +1087,24 @@
     });
     footer.appendChild(back);
     footer.appendChild(el("span", "mp-spacer"));
+
+    // Only the host can start, and only once a track is chosen: every peer has
+    // to open the same track, so an unnamed track would leave them stranded.
+    if (snap.isHost) {
+      var startLabel = snap.settings.track ? "Start Race" : "Select a track to start";
+      var start = iconButton("mp-start", "Start Race", null, startLabel);
+      start.disabled = !snap.settings.track;
+      start.title = snap.settings.track
+        ? "Start the race on " + prettyTrackName(snap.settings.track)
+        : "Pick a track in the host dialog first";
+      start.addEventListener("click", function () {
+        var message = room.beginRace();
+        if (!message) return;
+        if (transport) transport.send(message);
+        startRaceOnTrack(message.track);
+      });
+      footer.appendChild(start);
+    }
     windowNode.appendChild(footer);
 
     openOverlay("lobby", windowNode);
