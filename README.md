@@ -1,6 +1,6 @@
 # PolyTrack 0.5.2 (Unofficial Build)
 
-This repo contains the static assets for the PolyTrack 0.5.2 browser build (bundled `main.bundle.js`, worker, audio, tracks, etc.). The game expects to be hosted from one of the “official” domains baked into the bundle, so keep the deployment URL under `htmlunblockedgames.github.io` (or another host you’ve patched into the allow‑list).
+This repo contains the static assets for the PolyTrack 0.5.2 browser build (bundled `main.bundle.js`, worker, audio, tracks, etc.). The game runs from any static origin: `api-base.js` resolves the leaderboard backend per host, so nothing depends on the URL being an “official” domain.
 
 ---
 
@@ -13,15 +13,15 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   version” banner and with leaderboards enabled.
 * **No build step for the game itself.** `main.bundle.js` / `simulation_worker.bundle.js`
   ship prebuilt; every asset is served from this repo (no external CDN).
-* **Analytics removed.** The original owner’s Google Analytics snippet was dropped from
-  `index.html`, so the mirror does not report traffic upstream.
+* **Analytics tag retained.** `index.html` keeps the original owner’s Google Analytics
+  snippet (`G-TE23LLQE9F`); it is their property and removing it was never requested.
 * **Leaderboard backend.** Runs are submitted through a same-origin `/api/` proxy: the
   bundle calls `/api/...`, `worker/index.js` forwards it to the upstream backend, and
   `scripts/serve.js` mirrors that proxy in local development. The client never references
   the third-party host, so the page's own origin is the only one the browser contacts.
   A purely static host (GitHub Pages, plain Netlify) has no Worker to run that proxy, so
-  leaderboard submissions need the upstream URL restored in `main.bundle.js` or a
-  serverless function on that host. See `API.md` for the wire format.
+  `api-base.js` calls the upstream backend directly on those hosts — no build-time
+  patch and no serverless function required. See `API.md` for the wire format.
 * **Readable page metadata.** `index.html` carries a title, description, rating and
   Open Graph tags, plus a short boot screen with real text. That gives content
   classifiers something to read: the game itself renders entirely into a canvas, so
@@ -78,8 +78,10 @@ The game bundle is already built; `npm run build` only assembles `dist/`.
 
 ## Deployment Checklist (GitHub Pages)
 
-1. Push all assets to the `htmlunblockedgames.github.io/polytrack-0.5.2` path (or the host you control).
-2. Ensure the Pages site serves from the repo root so `tracks/`, `audio/`, `models/`, etc. are reachable.
+1. Push to `main` in `Codegister/Polyrace`; `.github/workflows/pages.yml` runs the tests, builds
+   `dist/` and publishes it to https://codegister.github.io/Polyrace/.
+2. Keep **Settings → Pages → Source** on **GitHub Actions**. The build copies `tracks/`,
+   `audio/`, `models/`, etc. into `dist/`, so a sub-path deploy stays self-contained.
 3. Because directory listings are disabled on GitHub Pages, always refresh the fallback track lists before deploying:
 
 ```bash
@@ -108,7 +110,23 @@ anywhere. Because it uses only relative URLs it works at a domain root **or** in
 sub‑path (`https://user.github.io/repo/`). HTTPS is required for real visitors
 (service workers / worker + WASM behaviour differs on plain HTTP).
 
-### Option A — Freebuff Sites (already configured)
+### Option A — GitHub Pages: `Codegister/Polyrace` (primary)
+
+| Field | Value |
+| --- | --- |
+| Live URL | https://codegister.github.io/Polyrace/ |
+| Repository | https://github.com/Codegister/Polyrace |
+| Pages source | **GitHub Actions** (`.github/workflows/pages.yml`) |
+| Published artifact | `dist/` only — no repo docs, scripts or tests are web-reachable |
+
+Pushing to `main` runs the smoke tests, builds `dist/` and publishes just that, so
+the live site contains game files only and a failing test blocks the deploy.
+
+`codegister.github.io` is a different registrable domain from `freebuff.page` and
+sits on the Public Suffix List, so filters classify it separately from any other
+GitHub Pages site.
+
+### Option B — Freebuff Sites (historical, blocked at school)
 
 | Field | Value |
 | --- | --- |
@@ -148,7 +166,7 @@ Deploy `sites.manifest.json` to the desired environment. **Limit: 1000 files /
 10 MiB per upload** — `dist/` currently sits at ~9.7 MiB, so run with
 `STRICT_SIZE=1 npm run build` to fail fast if new tracks push it over.
 
-### Option B — GitHub Pages (live, different registrable domain)
+### Option C — GitHub Pages (older mirror repo)
 
 **This is the deployment that matters.** `github.io` is not `freebuff.page`, so
 the site does not inherit whatever verdict made every `*.freebuff.page`
@@ -170,7 +188,7 @@ Source** is switched to **GitHub Actions**; while the repo stays on the branch
 deploy, that workflow's deploy step fails (harmlessly, but visibly) and should be
 deleted if the branch deploy is kept.
 
-### Option C — Cloudflare Pages / Netlify / Vercel
+### Option D — Cloudflare Pages / Netlify / Vercel
 
 Drag‑and‑drop or point the host at `dist/` with the repo root as the build
 context and `npm run build` as the build command. All three handle the ~10 MiB
