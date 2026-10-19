@@ -1,0 +1,301 @@
+/*
+ * PolyTrack multiplayer - native UI styles.
+ *
+ * Everything here is styled from the game's own design tokens (--surface-color,
+ * --button-color, ForcedSquare font, clipped parallelogram buttons) so the
+ * multiplayer screens are indistinguishable from the built-in menus.
+ */
+
+.mp-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(10, 10, 20, 0.55);
+  pointer-events: auto;
+}
+
+.mp-window {
+  width: 800px;
+  max-height: 88%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-secondary-color, #212b58);
+  color: var(--text-color, #fff);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.mp-window > .mp-title {
+  margin: 0;
+  padding: 22px 0 20px 0;
+  background-color: var(--surface-color, #28346a);
+  text-align: center;
+  font-size: 34px;
+  letter-spacing: 0.02em;
+}
+
+.mp-window > .mp-body {
+  padding: 18px 22px 6px 22px;
+  overflow-y: auto;
+}
+
+.mp-section {
+  margin: 0 0 16px 0;
+  padding: 16px 20px;
+  background-color: var(--surface-color, #28346a);
+}
+
+.mp-section > .mp-label {
+  margin: 0 0 12px 0;
+  font-size: 26px;
+}
+
+.mp-section > .mp-note {
+  margin: 12px 0 0 0;
+  font-size: 21px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.mp-window > .mp-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background-color: var(--surface-color, #28346a);
+}
+
+.mp-window > .mp-footer .mp-spacer {
+  flex-grow: 1;
+}
+
+.mp-button {
+  margin: 0;
+  padding: 12px 22px;
+  min-height: 52px;
+  box-sizing: border-box;
+  border: none;
+  background-color: var(--button-color, #112052);
+  color: var(--text-color, #fff);
+  font-family: inherit;
+  font-style: italic;
+  font-size: 27px;
+  line-height: 1;
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out;
+}
+.mp-button:hover:not(:disabled) {
+  background-color: var(--button-hover-color, #334b77);
+}
+.mp-button:active:not(:disabled) {
+  background-color: var(--button-active-color, #151f41);
+}
+.mp-button:disabled {
+  background-color: var(--button-disabled-color, #313d53);
+  color: var(--text-disabled-color, #5d6a7c);
+  cursor: default;
+}
+.mp-button > img {
+  vertical-align: middle;
+  width: 26px;
+  height: 26px;
+  margin: -4px 6px 0 0;
+}
+.mp-button.mp-secondary {
+  background-color: var(--button-color, #112052);
+}
+.mp-button.mp-selected {
+  background-color: var(--button-hover-color, #334b77);
+}
+
+.mp-input {
+  display: block;
+  width: 100%;
+  padding: 18px 20px;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  background-color: var(--button-color, #112052);
+  color: var(--text-color, #fff);
+  font-family: inherit;
+  font-style: italic;
+  font-size: 32px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+.mp-input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.mp-segmented {
+  display: flex;
+  gap: 0;
+}
+.mp-segmented > .mp-button {
+  min-width: 190px;
+}
+
+.mp-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.mp-slider-row > input[type="range"] {
+  flex-grow: 1;
+  height: 10px;
+  margin: 0;
+  appearance: none;
+  background-color: var(--button-color, #112052);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.6);
+  outline: none;
+  cursor: pointer;
+}
+.mp-slider-row > input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  background-color: #fff;
+  border: 3px solid #101a3c;
+  box-sizing: border-box;
+}
+.mp-slider-row > input[type="range"]::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 0;
+  background-color: #fff;
+  border: 3px solid #101a3c;
+  box-sizing: border-box;
+}
+
+.mp-track-tile {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background-color: var(--button-color, #112052);
+  color: var(--text-color, #fff);
+  font-family: inherit;
+  font-style: italic;
+  text-align: left;
+  cursor: pointer;
+}
+.mp-track-tile:hover {
+  background-color: var(--button-hover-color, #334b77);
+}
+.mp-track-tile > .mp-thumb {
+  width: 150px;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--surface-tertiary-color, #192042);
+  overflow: hidden;
+}
+.mp-track-tile > .mp-thumb > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mp-track-tile > .mp-track-name {
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  font-size: 27px;
+}
+
+.mp-code {
+  font-size: 44px;
+  letter-spacing: 0.28em;
+  color: #fff;
+}
+
+.mp-player-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+.mp-player-row:last-child {
+  border-bottom: 0;
+}
+.mp-player-row > .mp-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mp-player-row > .mp-player-meta {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.7);
+}
+.mp-player-row.mp-is-self > .mp-player-name {
+  color: #8ff08f;
+}
+
+.mp-error {
+  margin: 0 0 12px 0;
+  font-size: 22px;
+  color: #ff9b9b;
+}
+
+/* --- Garage additions ----------------------------------------------------
+ * The game's own .customization screen already provides Exit/Save/Default/
+ * Random and the four colour panels; these two pieces add the profile header
+ * shown in the reference layout.
+ */
+.customization > .top > .mp-garage-switch {
+  float: right;
+  margin-right: 8px;
+}
+
+.mp-profile-name {
+  position: absolute;
+  left: 0;
+  top: 68px;
+  z-index: 1;
+  margin: 0;
+  padding: 5px 30px 7px calc(12px + var(--safe-area-left, 0px));
+  background-color: var(--surface-secondary-color, #212b58);
+  color: var(--text-color, #fff);
+  font-size: 30px;
+  font-style: italic;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  pointer-events: none;
+}
+
+/* The profile dialog is created inside #ui while the garage sits on top of
+ * it, so lift the dialog above the garage while it is open. */
+.profile-selection.mp-profile-screen {
+  z-index: 60;
+}
+
+/* In-race status chip, kept small so it never fights the driving HUD. */
+.mp-race-status {
+  position: absolute;
+  right: 12px;
+  top: calc(12px + var(--safe-area-top, 0px));
+  z-index: 5;
+  padding: 8px 12px;
+  background-color: rgba(25, 32, 66, 0.72);
+  color: var(--text-color, #fff);
+  font-size: 20px;
+  line-height: 1.35;
+  text-align: right;
+  pointer-events: none;
+}

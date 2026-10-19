@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <!-- Google tag (gtag.js): kept from the upstream mirror so the site's
+             existing analytics keep working after the metadata rewrite. -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-TE23LLQE9F"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-TE23LLQE9F');
+        </script>
+        <title>PolyTrack – 3D Racing Game</title>
+        <meta name="description" content="PolyTrack is a free 3D racing game. Race low-poly cars on official and community tracks, or build your own track in the built-in level editor.">
+        <meta name="rating" content="general">
+        <meta name="robots" content="index, follow">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="PolyTrack">
+        <meta property="og:title" content="PolyTrack – 3D Racing Game">
+        <meta property="og:description" content="A free 3D racing game: low-poly cars, official and community tracks, and a built-in track editor.">
+        <meta property="og:image" content="./images/official_tracks.jpg">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:image" content="./images/official_tracks.jpg">
+        <meta name="theme-color" content="#0a0a14">
+        <link rel="preload" href="./forced_square.woff2" as="font" type="font/woff2" crossorigin="anonymous"/>
+        <link rel="preload" href="./images/logo.svg" as="image" type="image/svg+xml"/>
+        <link rel="preload" href="./images/discord.svg" as="image" type="image/svg+xml"/>
+        <link rel="manifest" href="./manifest.json"/>
+        <link rel="stylesheet" href="./multiplayer/ui.css"/>
+        <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,viewport-fit=cover,user-scalable=no">
+        <style>
+            /* Boot screen: gives the page real text and a heading while the game
+               downloads. It never intercepts input and is removed as soon as the
+               game's own menu mounts. */
+            #boot-screen {
+                position: fixed;
+                inset: 0;
+                z-index: 100;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 14px;
+                padding: 24px;
+                box-sizing: border-box;
+                background: #0a0a14;
+                color: #ffffff;
+                text-align: center;
+                pointer-events: none;
+                transition: opacity 0.25s ease;
+                font-family: "Forced Square", "Segoe UI", system-ui, sans-serif;
+            }
+            #boot-screen.boot-done {
+                opacity: 0;
+            }
+            #boot-screen h1 {
+                margin: 0;
+                font-size: 34px;
+                letter-spacing: 2px;
+                font-weight: normal;
+            }
+            #boot-screen p {
+                margin: 0;
+                max-width: 560px;
+                font-size: 16px;
+                line-height: 1.45;
+                opacity: 0.85;
+            }
+            #boot-screen .boot-status {
+                margin-top: 6px;
+                font-size: 15px;
+                opacity: 0.6;
+            }
+            #boot-noscript {
+                margin: 0;
+                padding: 24px;
+                color: #ffffff;
+                background: #0a0a14;
+                font-family: system-ui, sans-serif;
+            }
+        </style>
+        <!-- Resolves the backend base URL before the game bundles run: the
+             Worker host uses its same-origin /api/ proxy, a static host (GitHub
+             Pages) falls back to the public backend instead of 404ing. -->
+        <script defer="defer" src="./api-base.js"></script>
+        <script defer="defer" src="./error_screen.bundle.js"></script>
+        <!-- Multiplayer: the worker tap must run before the game bundles. -->
+        <script defer="defer" src="./multiplayer/shim.js"></script>
+        <script defer="defer" src="./main.bundle.js"></script>
+        <script defer="defer" src="./multiplayer/room-core.js"></script>
+        <script defer="defer" src="./multiplayer/transport-local.js"></script>
+        <script defer="defer" src="./multiplayer/transport-ably.js"></script>
+        <script defer="defer" src="./multiplayer/config.js"></script>
+        <script defer="defer" src="./multiplayer/multiplayer.bundle.js"></script>
+    </head>
+    <body>
+        <canvas id="screen"></canvas>
+        <div id="ui"></div>
+        <div id="transition-layer"></div>
+        <div id="boot-screen">
+            <h1>PolyTrack</h1>
+            <p>A free 3D racing game. Race low-poly cars on official and community tracks, or build your own track in the built-in level editor.</p>
+            <p class="boot-status">Loading…</p>
+        </div>
+        <noscript><p id="boot-noscript">PolyTrack is a 3D racing game that needs JavaScript and WebGL. Enable JavaScript to play.</p></noscript>
+        <script>
+            (function () {
+                var boot = document.getElementById("boot-screen");
+                if (!boot) return;
+                var removed = false;
+                function hide() {
+                    if (removed) return;
+                    removed = true;
+                    boot.classList.add("boot-done");
+                    setTimeout(function () {
+                        if (boot.parentNode) boot.parentNode.removeChild(boot);
+                    }, 300);
+                }
+                var ui = document.getElementById("ui");
+                if (window.MutationObserver && ui) {
+                    var observer = new MutationObserver(function () {
+                        if (ui.childElementCount > 0) {
+                            observer.disconnect();
+                            hide();
+                        }
+                    });
+                    observer.observe(ui, { childList: true });
+                }
+                setTimeout(hide, 8000);
+            })();
+        </script>
+    </body>
+</html>

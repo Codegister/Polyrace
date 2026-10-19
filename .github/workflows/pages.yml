@@ -1,0 +1,56 @@
+name: Deploy PolyTrack mirror to GitHub Pages
+
+# Hosts the mirror at https://<owner>.github.io/<repo>/ — the game uses relative
+# asset paths, so serving from a sub-path works without any changes.
+#
+# One-time setup after pushing this repo to GitHub:
+#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two Pages deployments race.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # No dependencies to install: the game ships prebuilt and the helper
+      # scripts only use Node built-ins.
+      - name: Smoke tests
+        run: npm test
+
+      - name: Build static site
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
