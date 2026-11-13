@@ -85,6 +85,9 @@
              Pages) falls back to the public backend instead of 404ing. -->
         <script defer="defer" src="./api-base.js"></script>
         <script defer="defer" src="./error_screen.bundle.js"></script>
+        <!-- Adaptive render resolution: must load before the game reads the
+             pixel ratio, and before any bundle creates a renderer. -->
+        <script defer="defer" src="./perf.js"></script>
         <!-- Multiplayer: the worker tap must run before the game bundles. -->
         <script defer="defer" src="./multiplayer/shim.js"></script>
         <script defer="defer" src="./main.bundle.js"></script>

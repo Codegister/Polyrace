@@ -186,6 +186,45 @@ addTest("Leaderboard verified-state UI removed", () => {
   );
 });
 
+addTest("Adaptive render scale is shipped and wired before the game", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  ensure(html.includes('src="./perf.js"'), "index.html must load perf.js");
+  ensure(
+    html.indexOf("./perf.js") < html.indexOf("./main.bundle.js"),
+    "perf.js must load before the game reads the pixel ratio"
+  );
+  const buildScript = fs.readFileSync(
+    path.join(repoRoot, "scripts", "build-site.js"),
+    "utf8"
+  );
+  ensure(buildScript.includes('"perf.js"'), "build-site.js must publish perf.js");
+});
+
+addTest("Adaptive render scale ladder and thresholds are sane", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "perf.js"), "utf8");
+  const sandbox = {};
+  vm.runInNewContext(src, sandbox);
+  const helpers = sandbox.__POLYTRACK_PERF__;
+  ensure(helpers, "perf.js must expose __POLYTRACK_PERF__ for tests");
+
+  // A 3x phone still caps at 2x; the ladder only ever descends, ends at the
+  // floor, and a low-density screen is left alone at the top.
+  const ladder = helpers.buildLadder(3);
+  ensure(ladder[0] === helpers.MAX_RATIO, `ladder top: ${ladder[0]}`);
+  ensure(
+    ladder[ladder.length - 1] >= helpers.MIN_RATIO - 0.001,
+    `ladder floor: ${ladder[ladder.length - 1]}`
+  );
+  for (let i = 1; i < ladder.length; i++) {
+    ensure(ladder[i] < ladder[i - 1], "the ladder must descend");
+  }
+  ensure(helpers.buildLadder(1)[0] === 1, "native ratio is kept when it is already low");
+
+  ensure(helpers.classify(40) === "slow", "40 ms frames are slow");
+  ensure(helpers.classify(16.7) === "fast", "60 Hz frames are fast");
+  ensure(helpers.classify(20) === "ok", "in-between frames change nothing");
+});
+
 (async () => {
   let passed = 0;
   for (const test of tests) {

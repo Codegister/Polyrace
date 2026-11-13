@@ -169,6 +169,9 @@
   });
 
   net.onWorkerMessage(function (data) {
+    // Only a room consumes the local car state, and this fires for every
+    // physics update, so skip both the checks and the allocation outside one.
+    if (!transport) return;
     if (!data || typeof data !== "object") return;
     if (data.messageType !== MSG_UPDATE_RESULT) return;
     var states = data.carStates;
@@ -176,7 +179,8 @@
 
     var mine = null;
     if (localCarId !== null) {
-      for (var i = 0; i < states.length; i++) {
+      // The worker sends several steps per update; only the newest matters.
+      for (var i = states.length - 1; i >= 0; i--) {
         if (states[i] && states[i].id === localCarId) {
           mine = states[i];
           break;
@@ -300,7 +304,10 @@
       room.tick();
       if (localState) {
         room.setLocalState(localState);
-        transport.send(room.stateMessage(localState));
+        // Nobody is listening while alone in the room, and a peer that joins
+        // asks for the current state with its hello. Not broadcasting saves a
+        // message every 80 ms during solo practice runs.
+        if (room.snapshot().count > 1) transport.send(room.stateMessage(localState));
       } else if (Date.now() - lastHelloAt > HELLO_INTERVAL_MS) {
         transport.send(room.hello());
         lastHelloAt = Date.now();
@@ -374,6 +381,11 @@
       });
   }
 
+  /** True while the node is still in the page. Cheap: no layout is read. */
+  function isAttached(node) {
+    return !!node && !!document.body && document.body.contains(node);
+  }
+
   function mountRoot() {
     if (uiRoot && document.body.contains(uiRoot)) return uiRoot;
     uiRoot = el("div", "mp-root");
@@ -417,10 +429,22 @@
     return null;
   }
 
+  var menuTileNode = null;
+
   function injectMenuTile() {
+    // The menu is rebuilt whenever the player returns to it. Remembering the
+    // tile we inserted lets a pass bail out with one property check instead of
+    // scanning the document (this runs while the game is drawing frames).
+    if (isAttached(menuTileNode)) return;
+    menuTileNode = null;
+
     var container = document.querySelector(".menu > .main-buttons-container");
     if (!container) return;
-    if (container.querySelector("[data-mp-tile]")) return;
+    var existing = container.querySelector("[data-mp-tile]");
+    if (existing) {
+      menuTileNode = existing;
+      return;
+    }
 
     var playTile = findTileByIcon(container, "play.svg");
     var tile = el("button", "button button-image");
@@ -433,6 +457,7 @@
     });
     if (playTile) container.insertBefore(tile, playTile);
     else container.appendChild(tile);
+    menuTileNode = tile;
 
     // The reference layout labels the car-customisation entry "Garage".
     if (config.renameGarageTile !== false) {
@@ -600,12 +625,29 @@
     if (profileSwitch.garageHidden) restoreGarage();
   }
 
+  var garageCache = { node: null, top: null, nameNode: null, barHeight: 0 };
+
   /** Adds the profile header (name + Switch Profile) to the game's garage. */
   function injectGarage() {
-    var garage = document.querySelector(".customization");
-    if (!garage) return;
+    var garage = isAttached(garageCache.node)
+      ? garageCache.node
+      : document.querySelector(".customization");
+    if (!garage) {
+      garageCache.node = null;
+      garageCache.top = null;
+      garageCache.nameNode = null;
+      garageCache.barHeight = 0;
+      return;
+    }
+    if (garage !== garageCache.node) {
+      garageCache.node = garage;
+      garageCache.top = null;
+      garageCache.nameNode = null;
+      garageCache.barHeight = 0;
+    }
 
-    var top = garage.querySelector(".top");
+    var top = isAttached(garageCache.top) ? garageCache.top : garage.querySelector(".top");
+    garageCache.top = top;
     if (top && !garage.querySelector("[data-mp-switch-profile]")) {
       var button = el("button", "button mp-garage-switch");
       button.type = "button";
@@ -616,19 +658,29 @@
       top.appendChild(button);
     }
 
-    var nameNode = garage.querySelector("[data-mp-profile-name]");
+    var nameNode = isAttached(garageCache.nameNode)
+      ? garageCache.nameNode
+      : garage.querySelector("[data-mp-profile-name]");
     if (!nameNode) {
       nameNode = el("div", "mp-profile-name");
       nameNode.setAttribute("data-mp-profile-name", "1");
       garage.appendChild(nameNode);
     }
+    garageCache.nameNode = nameNode;
 
     // Sit directly under the tool bar. Measured rather than hard-coded so the
     // tab lines up at any UI scale; the stylesheet's 68px stays as a fallback
-    // for when the bar is not laid out yet.
-    if (top && typeof top.getBoundingClientRect === "function") {
-      var barHeight = top.getBoundingClientRect().height;
-      if (barHeight > 0) nameNode.style.top = Math.round(barHeight) + "px";
+    // for when the bar is not laid out yet. Measuring reads layout, so it is
+    // done once per garage (and again after a resize) instead of every pass.
+    if (top && !garageCache.barHeight && garage.style.display !== "none") {
+      if (typeof top.getBoundingClientRect === "function") {
+        var barHeight = top.getBoundingClientRect().height;
+        if (barHeight > 0) garageCache.barHeight = Math.round(barHeight);
+      }
+    }
+    if (garageCache.barHeight > 0) {
+      var topPx = garageCache.barHeight + "px";
+      if (nameNode.style.top !== topPx) nameNode.style.top = topPx;
     }
 
     var nickname = currentNickname();
@@ -637,21 +689,71 @@
     syncProfileScreen();
   }
 
+  // --- screen watcher -------------------------------------------------------
+  //
+  // The game rewrites HUD text (speed, the race timer) every frame. Observing
+  // the whole document for that put our screening work - document scans and, in
+  // the garage, a forced layout - inside the render loop, which is what made
+  // the game feel sluggish. Now only element mounts/removals schedule a pass,
+  // passes are coalesced and rate-limited, and everything they do is cached.
+
+  var DOM_PASS_MIN_MS = 200;
+  var passScheduled = false;
+  var passTimer = 0;
+  var lastPassAt = 0;
+
+  function hasElementNode(nodes) {
+    if (!nodes) return false;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i] && nodes[i].nodeType === 1) return true;
+    }
+    return false;
+  }
+
+  function runDomPass() {
+    lastPassAt = Date.now();
+    injectMenuTile();
+    injectGarage();
+    watchGameTrackScreen();
+  }
+
+  function scheduleDomPass(immediate) {
+    if (passScheduled || passTimer) return;
+    var waited = Date.now() - lastPassAt;
+    if (!immediate && waited < DOM_PASS_MIN_MS) {
+      passTimer = window.setTimeout(function () {
+        passTimer = 0;
+        scheduleDomPass(true);
+      }, DOM_PASS_MIN_MS - waited);
+      return;
+    }
+    passScheduled = true;
+    window.requestAnimationFrame(function () {
+      passScheduled = false;
+      runDomPass();
+    });
+  }
+
   function watchMenu() {
     injectMenuTile();
     if (typeof MutationObserver !== "function" || !document.body) return;
-    var pending = false;
-    var observer = new MutationObserver(function () {
-      if (pending) return;
-      pending = true;
-      window.requestAnimationFrame(function () {
-        pending = false;
-        injectMenuTile();
-        injectGarage();
-        watchGameTrackScreen();
-      });
+    var host = document.getElementById("ui") || document.body;
+    var observer = new MutationObserver(function (records) {
+      // Text-only changes are HUD updates: they cannot add or remove a screen.
+      if (!records || records.length === 0) {
+        scheduleDomPass();
+        return;
+      }
+      for (var i = 0; i < records.length; i++) {
+        var record = records[i];
+        if (record.type !== "childList") continue;
+        if (hasElementNode(record.addedNodes) || hasElementNode(record.removedNodes)) {
+          scheduleDomPass();
+          return;
+        }
+      }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(host, { childList: true, subtree: true });
   }
 
   // --- join dialog ----------------------------------------------------------
@@ -1003,6 +1105,12 @@
 
   /** Keeps our state in step with the game's screen appearing and closing. */
   function watchGameTrackScreen() {
+    // Nothing to watch unless the host is picking a track or a race start is
+    // waiting for the screen; this keeps races free of track-screen scans.
+    if (!trackPick.active && !trackPick.pending) {
+      trackPick.bound = null;
+      return;
+    }
     var screenNode = document.querySelector('.track-selection');
     if (screenNode) {
       trackPick.seen = true;
@@ -1113,19 +1221,25 @@
 
   // --- in-race chip ---------------------------------------------------------
 
+  var raceChipText = null;
+
   function renderRaceChip() {
-    var snap = room.snapshot();
-    var active = status === "joined" && snap.roomCode;
-    if (!raceChip || !document.body.contains(raceChip)) {
-      if (!active) return;
-      raceChip = el("div", "mp-race-status");
-      (document.getElementById("ui") || document.body).appendChild(raceChip);
-    }
+    var active = status === "joined" && room.roomCode;
     if (!active) {
-      raceChip.style.display = "none";
+      if (raceChip && raceChip.style.display !== "none") {
+        raceChip.style.display = "none";
+        raceChipText = null;
+      }
       return;
     }
-    raceChip.style.display = "block";
+    if (!isAttached(raceChip)) {
+      raceChip = el("div", "mp-race-status");
+      raceChip.style.whiteSpace = "pre-line";
+      (document.getElementById("ui") || document.body).appendChild(raceChip);
+      raceChipText = null;
+    }
+    if (raceChip.style.display !== "block") raceChip.style.display = "block";
+    var snap = room.snapshot();
     var lines = [snap.roomCode + " · " + snap.count + "/" + snap.maxPlayers];
     snap.players.forEach(function (player) {
       if (player.isLocal) return;
@@ -1135,8 +1249,13 @@
           : "idle";
       lines.push(player.name + " · " + speed);
     });
-    raceChip.textContent = lines.join("\n");
-    raceChip.style.whiteSpace = "pre-line";
+    // Re-writing identical text still triggers layout and a DOM mutation, so
+    // only touch the chip when something actually changed.
+    var text = lines.join("\n");
+    if (text !== raceChipText) {
+      raceChip.textContent = text;
+      raceChipText = text;
+    }
   }
 
   function boot() {
@@ -1145,12 +1264,17 @@
     // stays live without rebuilding the lobby under the user's cursor.
     // Track titles are matched back to file names from this list.
     loadTracks().catch(function () {});
+    window.addEventListener("resize", function () {
+      // The garage toolbar's height is cached; a resize invalidates it.
+      garageCache.top = null;
+      garageCache.barHeight = 0;
+    });
     window.setInterval(function () {
       renderRaceChip();
-      // The garage is created/destroyed as the player navigates, and the
-      // nickname changes when a profile is switched.
-      injectGarage();
-      watchGameTrackScreen();
+      // Screens are created and destroyed as the player navigates, and the
+      // nickname changes when a profile is switched. The pass is coalesced and
+      // does almost nothing while none of our screens are up.
+      scheduleDomPass();
     }, 500);
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape" && overlay) closeOverlay();

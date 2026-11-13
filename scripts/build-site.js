@@ -15,6 +15,7 @@ const outDir = path.join(repoRoot, "dist");
 const PUBLIC_ENTRIES = [
   "index.html",
   "api-base.js",
+  "perf.js",
   "main.bundle.js",
   "simulation_worker.bundle.js",
   "error_screen.bundle.js",
