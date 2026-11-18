@@ -18,13 +18,19 @@
  * device's native value, so the picture is only softer while the device
  * actually needs it.
  *
- * Deliberately conservative:
+ * Asymmetric on purpose: it reacts quickly to a drop (one slow window is
+ * enough, a very slow one takes a double step) but recovers slowly, because a
+ * device that was struggling a moment ago usually still is. While the ratio is
+ * reduced a small badge in the corner says so, so a softer picture never looks
+ * like a bug.
+ *
+ * Deliberately careful:
  *   - nothing changes during the first seconds, while shaders and models are
  *     still being uploaded;
  *   - a window needs a real sample count before it can trigger a step, so
  *     loading hitches, hidden tabs and a single long frame are ignored;
- *   - one long window only steps down once, and only a sustained run of fast
- *     windows steps back up;
+ *   - only a sustained run of fast windows steps back up, and never within
+ *     RECOVER_HOLD_MS of a step down;
  *   - the ratio never exceeds the device's real pixel ratio and never goes
  *     below MIN_RATIO;
  *   - if the browser refuses to let the property be shadowed, the script does
@@ -41,16 +47,19 @@
   var MAX_RATIO = 2;
   var STEP_FACTOR = 0.85;
 
-  var WINDOW_MS = 2000;
-  var WARMUP_MS = 5000;
-  var MIN_FRAMES = 12;
+  var WINDOW_MS = 1200;
+  var WARMUP_MS = 2500;
+  var MIN_FRAMES = 8;
   var MAX_FRAME_MS = 250;
 
-  var SLOW_FRAME_MS = 23; // ~43 fps or worse
-  var VERY_SLOW_FRAME_MS = 40; // ~25 fps: take a bigger step
-  var FAST_FRAME_MS = 17.5; // ~57 fps: comfortably vsynced at 60 Hz
-  var SLOW_WINDOWS = 2;
-  var FAST_WINDOWS = 6;
+  var SLOW_FRAME_MS = 21; // ~48 fps: visibly dropping frames
+  var VERY_SLOW_FRAME_MS = 33; // ~30 fps: take a bigger step
+  var FAST_FRAME_MS = 17.2; // essentially vsynced at 60 Hz
+  var SLOW_WINDOWS = 1; // react to the first bad window
+  var FAST_WINDOWS = 8; // but need ~10 s of clean frames to climb back
+  var RECOVER_HOLD_MS = 4000; // never climb back straight after a step down
+
+  var INDICATOR_ID = "perf-indicator";
 
   /** Descending ratios from `max` down to MIN_RATIO, one step at a time. */
   function buildLadder(max) {
@@ -78,9 +87,15 @@
     MIN_RATIO: MIN_RATIO,
     MAX_RATIO: MAX_RATIO,
     SLOW_FRAME_MS: SLOW_FRAME_MS,
+    VERY_SLOW_FRAME_MS: VERY_SLOW_FRAME_MS,
     FAST_FRAME_MS: FAST_FRAME_MS,
     WINDOW_MS: WINDOW_MS,
+    WARMUP_MS: WARMUP_MS,
     MIN_FRAMES: MIN_FRAMES,
+    SLOW_WINDOWS: SLOW_WINDOWS,
+    FAST_WINDOWS: FAST_WINDOWS,
+    RECOVER_HOLD_MS: RECOVER_HOLD_MS,
+    INDICATOR_ID: INDICATOR_ID,
   };
 
   var doc = global.document;
@@ -127,6 +142,52 @@
   var slowWindows = 0;
   var fastWindows = 0;
   var startedAt = now();
+  var holdUntil = 0;
+
+  // The badge only exists while the ratio is reduced, and it never takes input.
+  var indicator = null;
+  var indicatorText = "";
+
+  function ensureIndicator() {
+    if (indicator) return indicator;
+    if (!doc.body || typeof doc.createElement !== "function") return null;
+    var el = doc.createElement("div");
+    el.id = INDICATOR_ID;
+    el.setAttribute("role", "status");
+    el.style.cssText =
+      "position:fixed;" +
+      "top:calc(8px + env(safe-area-inset-top, 0px));" +
+      "left:calc(8px + env(safe-area-inset-left, 0px));" +
+      "z-index:50;" +
+      "margin:0;padding:3px 7px;border-radius:5px;" +
+      "background:rgba(10,10,20,0.6);" +
+      "color:#fff;" +
+      "font:11px/1.35 system-ui,-apple-system,'Segoe UI',sans-serif;" +
+      "letter-spacing:0.02em;" +
+      "white-space:nowrap;" +
+      "opacity:0;transition:opacity 0.25s ease;" +
+      "pointer-events:none;user-select:none;";
+    doc.body.appendChild(el);
+    indicator = el;
+    return el;
+  }
+
+  function updateIndicator() {
+    if (index === 0 || !enabled || passthrough) {
+      if (indicator) indicator.style.opacity = "0";
+      return;
+    }
+    var el = ensureIndicator();
+    if (!el) return;
+    // Relative to the device's own ratio, so 100% means "as sharp as ever".
+    var percent = Math.round((ladder[index] / nativeRatio) * 100);
+    var text = "Resolution " + percent + "%";
+    if (text !== indicatorText) {
+      indicatorText = text;
+      el.textContent = text;
+    }
+    el.style.opacity = "1";
+  }
 
   function median(values) {
     var sorted = values.slice().sort(function (a, b) {
@@ -144,17 +205,21 @@
     fastWindows = 0;
   }
 
-  function stepDown(amount) {
+  function stepDown(amount, at) {
     var next = Math.min(ladder.length - 1, index + amount);
     if (next === index) return;
     index = next;
     slowWindows = 0;
+    fastWindows = 0;
+    holdUntil = at + RECOVER_HOLD_MS;
+    updateIndicator();
   }
 
   function stepUp() {
     if (index === 0) return;
     index -= 1;
     fastWindows = 0;
+    updateIndicator();
   }
 
   function evaluate(at) {
@@ -176,7 +241,10 @@
       slowWindows += 1;
       fastWindows = 0;
     } else if (verdict === "fast") {
-      fastWindows += 1;
+      // A step down buys the device breathing room; do not spend it again on
+      // the very next window, or a borderline device would see-saw.
+      if (at < holdUntil) fastWindows = 0;
+      else fastWindows += 1;
       slowWindows = 0;
     } else {
       slowWindows = 0;
@@ -184,7 +252,7 @@
     }
 
     if (slowWindows >= SLOW_WINDOWS) {
-      stepDown(medianMs > VERY_SLOW_FRAME_MS ? 2 : 1);
+      stepDown(medianMs > VERY_SLOW_FRAME_MS ? 2 : 1, at);
     } else if (fastWindows >= FAST_WINDOWS) {
       stepUp();
     }
@@ -219,7 +287,7 @@
 
   global.PolyTrackPerf = {
     get ratio() {
-      return ladder[index];
+      return passthrough ? nativeRatio : ladder[index];
     },
     get nativeRatio() {
       return nativeRatio;
@@ -244,6 +312,8 @@
     disable: function () {
       enabled = false;
       passthrough = true;
+      index = 0;
+      updateIndicator();
     },
   };
 })(typeof window !== "undefined" ? window : globalThis);

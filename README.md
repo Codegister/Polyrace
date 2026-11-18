@@ -27,16 +27,18 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   classifiers something to read: the game itself renders entirely into a canvas, so
   without it the page has zero text.
 * **Adaptive render resolution.** `perf.js` watches frame pacing and lowers the
-  game's effective pixel ratio when a device cannot sustain it — the situation
-  behind stutter late in long races on high-density screens — then walks it back
-  up once frames are comfortable. No setting is changed and nothing is reloaded.
+  game's effective pixel ratio as soon as a device starts dropping frames — the
+  situation behind stutter late in long races on high-density screens. It climbs
+  back only after a long run of clean frames, and shows a small `Resolution NN%`
+  badge in the corner while the picture is softened, so a blurrier image never
+  looks like a bug. No setting is changed and nothing is reloaded.
 
 ### Layout
 
 | Path | Purpose |
 | --- | --- |
 | `scripts/serve.js` | Zero‑dependency static dev server (no directory listings, like production). |
-| `perf.js` | Adaptive render-resolution governor (pixel ratio only). |
+| `perf.js` | Adaptive render-resolution governor (pixel ratio only, with an on-screen badge). |
 | `scripts/build-site.js` | Assembles the clean deployable site in `dist/`. |
 | `multiplayer/` | Live multiplayer: invite-code rooms, presence, state streaming (see `MULTIPLAYER.md`). |
 | `worker/index.js` | Worker fetch handler that serves `dist/` via the `ASSETS` binding. |

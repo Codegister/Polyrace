@@ -223,6 +223,47 @@ addTest("Adaptive render scale ladder and thresholds are sane", () => {
   ensure(helpers.classify(40) === "slow", "40 ms frames are slow");
   ensure(helpers.classify(16.7) === "fast", "60 Hz frames are fast");
   ensure(helpers.classify(20) === "ok", "in-between frames change nothing");
+
+  // It must react to the first bad window but take many clean windows (and a
+  // pause after stepping down) before it climbs back.
+  ensure(helpers.SLOW_WINDOWS === 1, `slow windows: ${helpers.SLOW_WINDOWS}`);
+  ensure(helpers.FAST_WINDOWS >= 6, `fast windows: ${helpers.FAST_WINDOWS}`);
+  ensure(
+    helpers.FAST_WINDOWS > helpers.SLOW_WINDOWS * 4,
+    "recovery must be slower than reaction"
+  );
+  ensure(helpers.WARMUP_MS <= 3000, `warm-up: ${helpers.WARMUP_MS}`);
+  ensure(
+    helpers.RECOVER_HOLD_MS >= helpers.WINDOW_MS,
+    "the recovery hold must cover at least one window"
+  );
+  ensure(
+    helpers.VERY_SLOW_FRAME_MS > helpers.SLOW_FRAME_MS,
+    "the very-slow threshold must sit above the slow one"
+  );
+  ensure(helpers.classify(22) === "slow", "22 ms frames are starting to stutter");
+  ensure(helpers.classify(60) === "slow", "collapsed frames are slow");
+});
+
+addTest("Adaptive render scale shows an indicator while it reduces resolution", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "perf.js"), "utf8");
+  ensure(src.includes('var INDICATOR_ID = "perf-indicator"'), "indicator id is missing");
+  ensure(
+    src.includes('"Resolution " + percent + "%"'),
+    "indicator text is missing"
+  );
+  ensure(src.includes("pointer-events:none"), "the indicator must never take input");
+  ensure(
+    src.includes("index === 0 || !enabled || passthrough"),
+    "the indicator must be hidden at the native ratio"
+  );
+  ensure(src.includes("updateIndicator();"), "the indicator must follow ratio changes");
+  const sandbox = {};
+  vm.runInNewContext(src, sandbox);
+  ensure(
+    sandbox.__POLYTRACK_PERF__.INDICATOR_ID === "perf-indicator",
+    "the indicator id must be exported for tests"
+  );
 });
 
 (async () => {
