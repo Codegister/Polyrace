@@ -266,6 +266,298 @@ addTest("Adaptive render scale shows an indicator while it reduces resolution", 
   );
 });
 
+addTest("Track streaming is shipped and wired before the game", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  ensure(html.includes('src="./track-stream.js"'), "index.html must load track-stream.js");
+  ensure(
+    html.indexOf("./track-stream.js") < html.indexOf("./main.bundle.js"),
+    "track-stream.js must load before the bundle that calls into it"
+  );
+  const buildScript = fs.readFileSync(
+    path.join(repoRoot, "scripts", "build-site.js"),
+    "utf8"
+  );
+  ensure(
+    buildScript.includes('"track-stream.js"'),
+    "build-site.js must publish track-stream.js"
+  );
+});
+
+addTest("Track streaming hooks are installed in the game bundle", () => {
+  ensure(
+    bundle.split('window.PolyTrackTrack.register(').length === 2,
+    "the bundle must call PolyTrackTrack.register exactly once"
+  );
+  ensure(
+    bundle.split('window.PolyTrackTrack.release(').length === 2,
+    "the bundle must call PolyTrackTrack.release exactly once"
+  );
+  ensure(
+    bundle.includes("const streamed = !!(window.PolyTrackTrack &&"),
+    "the register hook must be optional so the unmodified game still runs"
+  );
+  ensure(
+    bundle.includes("window.PolyTrackTrack && window.PolyTrackTrack.release"),
+    "the release hook must be optional so the unmodified game still runs"
+  );
+});
+
+addTest("Perf A/B harness is shipped, opt-in and loaded before the game", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  ensure(html.includes('src="./perf-ab.js"'), "index.html must load perf-ab.js");
+  ensure(
+    html.indexOf("./perf-ab.js") < html.indexOf("./main.bundle.js"),
+    "perf-ab.js must load before the game creates its WebGL context"
+  );
+  const buildScript = fs.readFileSync(
+    path.join(repoRoot, "scripts", "build-site.js"),
+    "utf8"
+  );
+  ensure(
+    buildScript.includes('"perf-ab.js"'),
+    "build-site.js must publish perf-ab.js"
+  );
+  const src = fs.readFileSync(path.join(repoRoot, "perf-ab.js"), "utf8");
+  ensure(src.includes("perfab"), "the harness must be behind ?perfab=1");
+  ensure(
+    src.includes("if (!enabled) return;"),
+    "the harness must be inert without its URL flag"
+  );
+});
+
+addTest("Perf A/B metrics are computed correctly and require no DOM", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "perf-ab.js"), "utf8");
+  const sandbox = {
+    location: { search: "?perfab=1&trackstream=off&duration=600&refresh=120" }
+  };
+  sandbox.window = sandbox;
+  vm.runInNewContext(src, sandbox);
+  const api = sandbox.PolyTrackPerfAB;
+  ensure(api, "the harness must expose PolyTrackPerfAB when enabled");
+  ensure(api.label === "off", `label: ${api.label}`);
+  ensure(api.config.duration === 600, `duration: ${api.config.duration}`);
+  ensure(api.config.refresh === 120, `refresh: ${api.config.refresh}`);
+  ensure(api._percentile([10, 20, 30, 40], 50) === 25, "p50 interpolation");
+  ensure(api._percentile([5], 95) === 5, "single sample percentile");
+
+  const summary = api._summarize([16, 16, 17, 120], 4000, 60, null);
+  ensure(summary.frames === 4, `frames: ${summary.frames}`);
+  ensure(summary.fps === 1, `fps: ${summary.fps}`);
+  ensure(summary.long.over50 === 1 && summary.long.over100 === 1, "long frames");
+  ensure(summary.long.perMinute === 15, `long/min: ${summary.long.perMinute}`);
+  ensure(summary.dropped.expected === 240, "expected vsync ticks");
+  ensure(summary.dropped.count === 236, `dropped: ${summary.dropped.count}`);
+  ensure(summary.frameMs.max === 120, `max: ${summary.frameMs.max}`);
+  ensure(summary.frameMs.p95 > 17 && summary.frameMs.p95 < 120, "p95 in range");
+
+  const off = { location: { search: "?trackstream=off" } };
+  off.window = off;
+  vm.runInNewContext(src, off);
+  ensure(off.PolyTrackPerfAB === undefined, "no API without ?perfab=1");
+});
+
+addTest("Track streaming windows instances, restores full views and releases", () => {
+  const src = fs.readFileSync(path.join(repoRoot, "track-stream.js"), "utf8");
+  const sandbox = {};
+  sandbox.window = sandbox;
+  sandbox.requestAnimationFrame = function () {};
+  sandbox.setInterval = function () {};
+  vm.runInNewContext(src, sandbox);
+  const api = sandbox.PolyTrackTrack;
+  ensure(api && typeof api.register === "function", "track-stream.js must expose the API");
+  ensure(api.version === 2, `API version: ${api.version}`);
+  ensure(api.config.radius > 0, "a streaming radius is required");
+  ensure(
+    api.config.farRadius >= api.config.radius,
+    "the far cone must reach at least as far as the near radius"
+  );
+  ensure(api.config.farMargin >= 1, "the far cone must not be narrower than the view");
+  ensure(api.config.repackStep > 0, "a repack step is required");
+  ensure(api.config.behindDistance < api.config.radius, "behind distance must be small");
+  ensure(api.config.minInstances > 0, "a small-track threshold is required");
+  ensure(api.config.minSpan > 0, "a small-track span threshold is required");
+  ensure(api.config.requireRaceHud === true, "streaming must wait for the race HUD");
+
+  class FakeAttribute {
+    constructor(count) {
+      this.array = new Float32Array(count * 16);
+      this.needsUpdate = false;
+      this.updateRanges = [];
+    }
+    addUpdateRange(start, count) {
+      this.updateRanges.push({ start, count });
+    }
+    clearUpdateRanges() {
+      this.updateRanges.length = 0;
+    }
+  }
+  class FakeMesh {
+    constructor(count) {
+      this.isInstancedMesh = true;
+      this.geometry = {};
+      this.material = {};
+      this.count = count;
+      this.visible = true;
+      this.instanceMatrix = new FakeAttribute(count);
+    }
+    dispose() {
+      this.disposed = true;
+    }
+  }
+  class FakeShadow extends FakeMesh {}
+
+  function makeParts(count, spacing, x, y) {
+    const parts = [];
+    for (let i = 0; i < count; i++) {
+      const e = new Float32Array(16);
+      e[0] = e[5] = e[10] = e[15] = 1;
+      e[12] = x || 0;
+      e[13] = y || 0;
+      e[14] = i * spacing;
+      parts.push({ matrix: { elements: e } });
+    }
+    return parts;
+  }
+  function makeScene() {
+    return {
+      items: [],
+      add(o) {
+        this.items.push(o);
+      },
+      remove(o) {
+        const i = this.items.indexOf(o);
+        if (i !== -1) this.items.splice(i, 1);
+      }
+    };
+  }
+  function cameraAt(x, y, z) {
+    return {
+      position: {
+        x,
+        y,
+        z,
+        clone() {
+          return { x, y, z };
+        }
+      },
+      getWorldDirection(v) {
+        v.x = 0;
+        v.y = 0;
+        v.z = -1;
+        return v;
+      }
+    };
+  }
+
+  const scene = makeScene();
+  const env = { scene };
+  const parts = makeParts(4000, 5);
+  const base = new FakeMesh(parts.length);
+  const shadow = new FakeShadow(parts.length);
+  ensure(api.register(env, base, shadow, parts) === true, "a large track must be accepted");
+  ensure(
+    shadow.instanceMatrix === base.instanceMatrix,
+    "the shadow mesh must share the base instance buffer"
+  );
+  api.finalize(env);
+
+  let state = api.stats(env);
+  ensure(state.eligible === true, "the large track must be eligible");
+  ensure(state.mode === "originals", `initial mode: ${state.mode}`);
+  ensure(state.drawn === 4000, `initial drawn: ${state.drawn}`);
+  ensure(state.draws === 1, "draw calls must stay one per part group");
+  ensure(scene.items.length === 2, "both game meshes must stay in the scene");
+
+  // Menu / track selection: no HUD, so the whole track stays drawn.
+  sandbox.document = { querySelector: () => null };
+  api.update(env, cameraAt(0, 0, 0));
+  ensure(api.stats(env).drawn === 4000, "previews must keep the whole track");
+
+  // Race HUD: only the window is left in the draw range.
+  sandbox.document = { querySelector: () => ({}) };
+  api.update(env, cameraAt(0, 0, 0));
+  state = api.stats(env);
+  ensure(state.mode === "windowed", `streaming mode: ${state.mode}`);
+  ensure(state.drawn > 0 && state.drawn < 4000, `window drawn: ${state.drawn}`);
+  ensure(
+    base.count === state.drawn && shadow.count === state.drawn,
+    "both mesh counts must follow the window"
+  );
+  ensure(base.instanceMatrix.needsUpdate === true, "the window must be uploaded");
+  ensure(
+    base.instanceMatrix.updateRanges.length === 1 &&
+      base.instanceMatrix.updateRanges[0].count === state.drawn * 16,
+    "only the window prefix may be uploaded"
+  );
+  const nearDrawn = state.drawn;
+
+  // A few units without a repack must not rewrite the window.
+  api.update(env, cameraAt(0, 0, 8));
+  ensure(api.stats(env).drawn === nearDrawn, "small moves must not repack");
+
+  // The window follows the camera to the far end of the track.
+  api.update(env, cameraAt(0, 0, 19995));
+  const far = api.stats(env);
+  ensure(far.drawn > 0 && far.drawn < 4000, `far drawn: ${far.drawn}`);
+  ensure(far.drawn !== nearDrawn, "the window must move with the camera");
+
+  // Leaving the track restores every instance.
+  api.update(env, cameraAt(0, 1000, 0));
+  const all = api.stats(env);
+  ensure(all.mode === "originals", `full mode: ${all.mode}`);
+  ensure(all.drawn === 4000, `restored drawn: ${all.drawn}`);
+  ensure(base.count === 4000 && shadow.count === 4000, "full counts must be restored");
+
+  // A small track is never eligible and never touched.
+  const smallScene = makeScene();
+  const smallEnv = { scene: smallScene };
+  const smallParts = makeParts(40, 5);
+  const smallMesh = new FakeMesh(40);
+  ensure(api.register(smallEnv, smallMesh, null, smallParts) === true, "small tracks register");
+  api.finalize(smallEnv);
+  const small = api.stats(smallEnv);
+  ensure(small.eligible === false, "small tracks must not stream");
+  ensure(small.drawn === 40, `small drawn: ${small.drawn}`);
+  ensure(smallMesh.count === 40, "small tracks keep every instance");
+  ensure(smallScene.items.length === 1, "small tracks keep the game mesh");
+
+  // Beyond the near radius, only the forward view cone is kept.
+  api.config.radius = 1;
+  api.config.farRadius = 800;
+  api.config.behindDistance = 0;
+  api.config.minInstances = 100;
+  api.config.minSpan = 100;
+  const coneParts = makeParts(400, 5, 0, 0).map((part, i) => {
+    part.matrix.elements[14] = -1000 + i * 5;
+    return part;
+  });
+  const coneScene = makeScene();
+  const coneEnv = { scene: coneScene };
+  const coneMesh = new FakeMesh(coneParts.length);
+  api.register(coneEnv, coneMesh, null, coneParts);
+  api.finalize(coneEnv);
+  api.update(coneEnv, cameraAt(0, 0, 0));
+  const cone = api.stats(coneEnv);
+  ensure(cone.eligible === true, "the cone track must be eligible");
+  ensure(cone.drawn > 0 && cone.drawn < 400, `cone drawn: ${cone.drawn}`);
+  let coneMin = Infinity;
+  let coneMax = -Infinity;
+  for (let i = 0; i < coneMesh.count; i++) {
+    const z = coneMesh.instanceMatrix.array[i * 16 + 14];
+    if (z < coneMin) coneMin = z;
+    if (z > coneMax) coneMax = z;
+  }
+  ensure(coneMax <= 0.001, `nothing behind the camera may be drawn: ${coneMax}`);
+  ensure(coneMin >= -800.001, `the cone must stop at farRadius: ${coneMin}`);
+  api.release(coneEnv);
+
+  api.release(env);
+  ensure(scene.items.length === 0, "release must detach every mesh from the scene");
+  ensure(api.stats(env) === null, "release must forget the track");
+  api.release(smallEnv);
+  ensure(smallScene.items.length === 0, "release must detach small tracks too");
+});
+
 (async () => {
   let passed = 0;
   for (const test of tests) {

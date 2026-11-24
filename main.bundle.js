@@ -32940,13 +32940,15 @@
                             e.receiveShadow = !0;
                             for (let t = 0; t < o.length; ++t)
                                 e.setMatrixAt(t, o[t].matrix);
-                            if (_x(this, px, "f").scene.add(e),
-                            _x(this, xx, "f").push(e),
-                            null != i) {
-                                const n = new dx(e,i);
-                                n.update(new va(new bn(0,1,0),0), t),
-                                _x(this, px, "f").scene.add(n),
-                                _x(this, xx, "f").push(n)
+                            const shadowMesh = null != i ? new dx(e,i) : null;
+                            null != shadowMesh && shadowMesh.update(new va(new bn(0,1,0),0), t);
+                            /* PolyTrack track streaming hook: see track-stream.js. */
+                            const streamed = !!(window.PolyTrackTrack && window.PolyTrackTrack.register(_x(this, px, "f"), e, shadowMesh, o));
+                            if (!streamed) {
+                                _x(this, px, "f").scene.add(e),
+                                _x(this, xx, "f").push(e),
+                                null != shadowMesh && (_x(this, px, "f").scene.add(shadowMesh),
+                                _x(this, xx, "f").push(shadowMesh))
                             }
                         }
                     }
@@ -33083,6 +33085,8 @@
         xx = new WeakMap,
         ux = new WeakSet,
         kx = function() {
+            /* PolyTrack track streaming hook: see track-stream.js. */
+            window.PolyTrackTrack && window.PolyTrackTrack.release(_x(this, px, "f"));
             for (const e of _x(this, xx, "f"))
                 _x(this, px, "f").scene.remove(e);
             _x(this, xx, "f").length = 0

@@ -88,6 +88,13 @@
         <!-- Adaptive render resolution: must load before the game reads the
              pixel ratio, and before any bundle creates a renderer. -->
         <script defer="defer" src="./perf.js"></script>
+        <!-- Track streaming: must load before main.bundle.js, which calls into
+             it while building the track meshes. -->
+        <script defer="defer" src="./track-stream.js"></script>
+        <!-- Opt-in real-device A/B harness (?perfab=1): frame times, dropped
+             frames and WebGL counts; inert otherwise. Must load before any
+             bundle creates a WebGL context. -->
+        <script defer="defer" src="./perf-ab.js"></script>
         <!-- Multiplayer: the worker tap must run before the game bundles. -->
         <script defer="defer" src="./multiplayer/shim.js"></script>
         <script defer="defer" src="./main.bundle.js"></script>

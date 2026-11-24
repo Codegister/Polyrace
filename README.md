@@ -32,6 +32,16 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   back only after a long run of clean frames, and shows a small `Resolution NN%`
   badge in the corner while the picture is softened, so a blurrier image never
   looks like a bug. No setting is changed and nothing is reloaded.
+* **Windowed track geometry.** The game builds one `InstancedMesh` per part
+  type/colour containing every copy of that part in the whole track, with
+  `frustumCulled = false`. On a long track that submits the entire map every
+  frame, twice with shadows. `track-stream.js` rewrites each mesh's instance
+  table as the player moves so only parts around the camera, plus the view cone
+  down the track, are in the drawn range, keeping the game's draw-call count
+  unchanged. Small tracks (under
+  3000 instances or shorter than 700 units) are left untouched, and views that
+  show the whole map (menu preview, track selection, editor zoomed out) always
+  draw every part.
 
 ### Layout
 
@@ -39,6 +49,8 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
 | --- | --- |
 | `scripts/serve.js` | Zero‑dependency static dev server (no directory listings, like production). |
 | `perf.js` | Adaptive render-resolution governor (pixel ratio only, with an on-screen badge). |
+| `track-stream.js` | Windows track geometry around the camera and view cone. |
+| `perf-ab.js` | Opt-in (`?perfab=1`) real-device A/B harness: frame time, dropped frames, WebGL counts. |
 | `scripts/build-site.js` | Assembles the clean deployable site in `dist/`. |
 | `multiplayer/` | Live multiplayer: invite-code rooms, presence, state streaming (see `MULTIPLAYER.md`). |
 | `worker/index.js` | Worker fetch handler that serves `dist/` via the `ASSETS` binding. |
@@ -53,6 +65,110 @@ npm test                      # smoke tests
 npm run verify:deploy <url>   # check a live origin against dist/ byte-for-byte
 npm run update-fallbacks      # refresh embedded track lists after adding .track files
 ```
+
+---
+
+## Track streaming
+
+`track-stream.js` is the only piece of the game pipeline that touches track
+meshes. It is loaded before `main.bundle.js`, which contains exactly two hook
+calls into it:
+
+* `Track.generateMeshes()` passes every finished `InstancedMesh`, its shadow
+  copy and the group's part list to
+  `PolyTrackTrack.register(environment, mesh, shadow, parts)`;
+* the internal `disposeTrackMeshes()` calls `PolyTrackTrack.release(environment)`
+  before a track is rebuilt or cleared.
+
+If the script is missing, both calls are guarded and the game behaves exactly as
+before. The track format, part list and materials are never changed. The shadow
+mesh the game creates for track shadows is pointed at the base mesh's instance
+buffer (its duplicate buffer is dropped), which also removes a whole copy of the
+instance data from GPU memory.
+
+How it works:
+
+* at build time the parts of a track are counted; tracks under `minInstances`
+  (3000) or with a horizontal extent under `minSpan` (700 units) are left
+  exactly as the game made them;
+* while the race HUD (`.timer` / `.speedometer` inside `#ui`) is mounted, every
+  `repackStep` (64) units of travel the layer rewrites each mesh's instance
+  table: only parts within `radius` (300) of a centre pushed `lookAhead` (0.35)
+  of the radius ahead of the camera are copied to the front, and
+  `mesh.count` is set to that number. Parts more than `behindDistance` (60)
+  behind the camera are skipped. Outside `radius`, parts stay drawn out to
+  `farRadius` (450) while they are inside a cone `farMargin` (1.2) times the
+  camera's horizontal half-FOV, so the long view down a straight (arches,
+  distant scenery) is still there;
+* the upload uses the buffer attribute's update range, so only the drawn prefix
+  is sent to the GPU, not the full instance table;
+* the re-pack is a short burst at most once per 64 units of travel, instead of
+  per-frame work. Draw-call count does not change: still one call per part
+  type/colour;
+* if the camera is outside the track bounds plus `boundsMargin` (24) — the
+  editor zoomed out, a car flying off the map — or the race HUD is not there
+  (menu preview, track selection), the full instance table is restored once;
+* leaving the track disposes the instance buffers the game handed over.
+
+Tune or verify it from the browser console (or with `?trackstream=debug`):
+
+```js
+PolyTrackTrack.config.radius = 240;      // live, next re-pack
+PolyTrackTrack.config.repackStep = 96;   // fewer, larger re-packs
+PolyTrackTrack.stats();                  // mode, instances, drawn, draws
+PolyTrackTrack.setEnabled(false);        // show the whole track again
+```
+
+`?trackstream=off` disables the layer from the URL. The two bundle hooks are the
+only modifications to `main.bundle.js`; keep them when refreshing the bundle from
+an upstream build.
+
+---
+
+## Real-device A/B performance test
+
+`perf-ab.js` is an opt-in harness for measuring the streaming change on real
+hardware. It is inert unless the page is opened with `?perfab=1`.
+
+| URL | What it measures |
+| --- | --- |
+| `/?perfab=1&trackstream=off` | A: the old path — the full track every frame |
+| `/?perfab=1` | B: the streamed path |
+
+Optional parameters: `&duration=600` (seconds, default 300), `&refresh=120` for
+a 120 Hz iPad Pro, `&delay=5` before recording starts, `&autostart=0` to start
+by hand, and `&adapt=0` to pin the render scale. Recording starts a few seconds
+after the race HUD appears and stops itself after `duration`, so both runs
+measure the same amount of race.
+
+The adaptive-resolution governor is left on by default because that is the
+shipped experience; the harness records its ladder index and pixel ratio in
+`summary.performance` and per second in `buckets[].perfIndex`. If A and B end on
+the same index, frame times are directly comparable; if B holds a higher index,
+it is doing so at a sharper resolution. Use `&adapt=0` in both URLs for a pair
+pinned at the device's native ratio when you want an uncontaminated frame-time
+delta.
+
+The panel shows live fps, p95 frame time, >50 ms frames per second and WebGL
+draws/instances. Copy or download the JSON at the end; it contains a summary and
+one bucket per second:
+
+* `summary.frameMs` (mean/p50/p90/p95/p99/max), `fps`, `long.over50/over100`,
+  `long.perMinute` and `dropped` against the display refresh;
+* `summary.gl.callsMean/instancesMean/trianglesMean` — counted by wrapping the
+  WebGL draw calls, so they work in both modes without the game's help;
+* `summary.firstMinute`, `summary.lastMinute` and `summary.trend` (fps and p95
+  ratio) — the progressive-slowdown signal;
+* `summary.heap` when `performance.memory` exists (Chromium browsers); iOS
+  Safari has no memory API, so read the JS heap from the Web Inspector memory
+  timeline and the JSON records `heap.supported: false`;
+* `summary.streaming.mode/drawn/instances` and `buckets[].mode/drawn` confirm
+  the window is active in run B.
+
+The change is working when B shows far fewer `gl.instancesMean` and
+`trianglesMean` with the same `callsMean`, and its last minute does not degrade
+relative to its first (`trend.fpsRatio` near 1.0). See the notes in the panel
+and the run procedure in the final report.
 
 ---
 

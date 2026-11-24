@@ -16,6 +16,8 @@ const PUBLIC_ENTRIES = [
   "index.html",
   "api-base.js",
   "perf.js",
+  "track-stream.js",
+  "perf-ab.js",
   "main.bundle.js",
   "simulation_worker.bundle.js",
   "error_screen.bundle.js",
