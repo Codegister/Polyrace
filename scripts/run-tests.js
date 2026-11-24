@@ -501,8 +501,13 @@ addTest("Track streaming windows instances, restores full views and releases", (
   ensure(far.drawn > 0 && far.drawn < 4000, `far drawn: ${far.drawn}`);
   ensure(far.drawn !== nearDrawn, "the window must move with the camera");
 
-  // Leaving the track restores every instance.
+  // Height is not part of the bounds: a jump above the track must keep the
+  // window instead of restoring (and uploading) the whole track mid-race.
   api.update(env, cameraAt(0, 1000, 0));
+  ensure(api.stats(env).mode === "windowed", "a jump must not restore the track");
+
+  // Leaving the track horizontally restores every instance.
+  api.update(env, cameraAt(5000, 0, 0));
   const all = api.stats(env);
   ensure(all.mode === "originals", `full mode: ${all.mode}`);
   ensure(all.drawn === 4000, `restored drawn: ${all.drawn}`);
@@ -550,6 +555,43 @@ addTest("Track streaming windows instances, restores full views and releases", (
   ensure(coneMax <= 0.001, `nothing behind the camera may be drawn: ${coneMax}`);
   ensure(coneMin >= -800.001, `the cone must stop at farRadius: ${coneMin}`);
   api.release(coneEnv);
+
+  // A re-pack is applied in slices, so no single frame replaces the whole
+  // window; counts and the drawn total stay consistent while it is in flight.
+  const spreadScene = makeScene();
+  const spreadEnv = { scene: spreadScene };
+  const spreadPartsA = makeParts(2000, 5);
+  const spreadPartsB = makeParts(2000, 5, 40, 0);
+  const spreadMeshA = new FakeMesh(2000);
+  const spreadMeshB = new FakeMesh(2000);
+  api.register(spreadEnv, spreadMeshA, null, spreadPartsA);
+  api.register(spreadEnv, spreadMeshB, null, spreadPartsB);
+  api.finalize(spreadEnv);
+  api.update(spreadEnv, cameraAt(0, 0, 0), false);
+  ensure(api.stats(spreadEnv).mode === "windowed", "the spread test starts windowed");
+  const uploadBudget = api.config.uploadBytesPerFrame;
+  api.config.uploadBytesPerFrame = 1;
+  api.update(spreadEnv, cameraAt(0, 0, 4000), true);
+  let spread = api.stats(spreadEnv);
+  ensure(spread.pending === 1, `a budgeted pack must leave work pending: ${spread.pending}`);
+  ensure(
+    spread.drawn === spreadMeshA.count + spreadMeshB.count,
+    "drawn must match the groups already switched"
+  );
+  let spreadFrames = 0;
+  while (api.stats(spreadEnv).pending > 0 && spreadFrames < 10) {
+    api.update(spreadEnv, cameraAt(0, 0, 4000), true);
+    spreadFrames += 1;
+  }
+  spread = api.stats(spreadEnv);
+  ensure(spread.pending === 0, "the spread pack must finish");
+  ensure(
+    spread.drawn === spreadMeshA.count + spreadMeshB.count,
+    "drawn must match counts after the spread pack"
+  );
+  ensure(spread.packs >= 2, `packs must be counted: ${spread.packs}`);
+  api.config.uploadBytesPerFrame = uploadBudget;
+  api.release(spreadEnv);
 
   api.release(env);
   ensure(scene.items.length === 0, "release must detach every mesh from the scene");

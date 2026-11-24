@@ -102,12 +102,20 @@ How it works:
   distant scenery) is still there;
 * the upload uses the buffer attribute's update range, so only the drawn prefix
   is sent to the GPU, not the full instance table;
-* the re-pack is a short burst at most once per 64 units of travel, instead of
-  per-frame work. Draw-call count does not change: still one call per part
-  type/colour;
-* if the camera is outside the track bounds plus `boundsMargin` (24) — the
-  editor zoomed out, a car flying off the map — or the race HUD is not there
-  (menu preview, track selection), the full instance table is restored once;
+* a re-pack is applied a few groups at a time, up to roughly
+  `uploadBytesPerFrame` (256 KiB) per frame, so one frame never replaces the
+  whole window. Each group switches atomically from its old draw range to the
+  new one, so intermediate frames still draw uploaded geometry;
+* the re-pack starts at most once per 64 units of travel (or after a sharp
+  turn), instead of running every frame. Draw-call count does not change: still
+  one call per part type/colour;
+* only horizontal bounds are checked: a jump can put the camera above every
+  part without meaning the camera left the track, and restoring the whole
+  track there would upload all of it just before the window is needed again.
+  If the camera is outside the horizontal bounds plus `boundsMargin` (24) —
+  the editor zoomed out, a car flying off the map — or the race HUD is not
+  there (menu preview, track selection), the full instance table is restored
+  once;
 * leaving the track disposes the instance buffers the game handed over.
 
 Tune or verify it from the browser console (or with `?trackstream=debug`):
@@ -115,7 +123,8 @@ Tune or verify it from the browser console (or with `?trackstream=debug`):
 ```js
 PolyTrackTrack.config.radius = 240;      // live, next re-pack
 PolyTrackTrack.config.repackStep = 96;   // fewer, larger re-packs
-PolyTrackTrack.stats();                  // mode, instances, drawn, draws
+PolyTrackTrack.config.uploadBytesPerFrame = 256 * 1024; // smaller slices
+PolyTrackTrack.stats();                  // mode, drawn, draws, packs, pending
 PolyTrackTrack.setEnabled(false);        // show the whole track again
 ```
 

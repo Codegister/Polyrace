@@ -514,6 +514,8 @@
       triangles: Math.round(b.triangles / b.frames),
       drawn: snapshot ? snapshot.drawn : null,
       mode: snapshot ? snapshot.mode : null,
+      packs: snapshot ? snapshot.packs : null,
+      pending: snapshot ? snapshot.pending : null,
       perfIndex: perfSnapshot() ? perfSnapshot().index : null,
       heapMB: b.heapMB
     });

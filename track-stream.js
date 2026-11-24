@@ -69,12 +69,19 @@
     behindDistance: 60,
     // Re-pack once the camera has moved this many units (or turned sharply).
     repackStep: 64,
+    // A re-pack replaces every drawn instance table, which used to mean one
+    // multi-megabyte upload in a single frame (the hitch felt at some points).
+    // Spread it over frames: each frame re-packs groups until it has queued
+    // about this many bytes. 0 sends the whole window in one frame.
+    uploadBytesPerFrame: 256 * 1024,
     // Tracks with fewer instances than this are left untouched.
     minInstances: 3000,
     // Tracks whose horizontal extent is below this are left untouched too.
     minSpan: 700,
-    // How far outside the track's bounds the camera may be before the full
-    // track is restored.
+    // How far outside the track's horizontal (x/z) bounds the camera may be
+    // before the full track is restored. Height is deliberately ignored: a
+    // jump lifts the camera above every part, and restoring the whole track
+    // there would upload all of it just before the window is needed again.
     boundsMargin: 24,
     // Only window instances while the game's race HUD is on screen.
     requireRaceHud: true,
@@ -144,6 +151,10 @@
       maxY: -Infinity,
       maxZ: -Infinity,
       finalized: false,
+      job: null,
+      packs: 0,
+      sliceMsLast: 0,
+      sliceMsMax: 0,
       lastCamera: null,
       lastPackX: null,
       lastPackZ: null,
@@ -247,6 +258,7 @@
   }
 
   function restoreAll(state, reason) {
+    state.job = null;
     if (state.mode === "originals" && state.drawn === state.total) return;
     var drawn = 0;
     for (var g = 0; g < state.groups.length; g++) {
@@ -269,12 +281,13 @@
     log("whole track restored", reason || "", drawn, "instances");
   }
 
-  function pack(state, camera) {
+  // Freeze the camera state a re-pack works from, so a pack spread over
+  // several frames stays consistent while the camera keeps moving.
+  function packParams(state, camera) {
     var position = camera.position;
+    if (!position) return null;
     var radius = Math.max(1, CONFIG.radius);
-    var radius2 = radius * radius;
     var farRadius = Math.max(radius, CONFIG.farRadius);
-    var farRadius2 = farRadius * farRadius;
     // Horizontal half-FOV, widened a little so turning inside a repack step
     // does not uncover culled geometry at the screen edge.
     var halfFov = Math.PI / 3;
@@ -289,7 +302,6 @@
       );
     }
     var farAngle = Math.max(0.35, Math.min(1.45, halfFov * CONFIG.farMargin));
-    var cosFar = Math.cos(farAngle);
     var forwardX = 0;
     var forwardZ = 0;
     if (typeof camera.getWorldDirection === "function") {
@@ -305,70 +317,122 @@
       forwardX = 0;
       forwardZ = -1;
     }
-
     var shift = radius * CONFIG.lookAhead;
-    var cx = position.x + forwardX * shift;
-    var cz = position.z + forwardZ * shift;
-    var cy = position.y;
-    var behind = CONFIG.behindDistance;
-    var drawn = 0;
+    return {
+      positionX: position.x,
+      positionZ: position.z,
+      cx: position.x + forwardX * shift,
+      cy: position.y,
+      cz: position.z + forwardZ * shift,
+      radius2: radius * radius,
+      farRadius2: farRadius * farRadius,
+      cosFar: Math.cos(farAngle),
+      forwardX: forwardX,
+      forwardZ: forwardZ,
+      behind: CONFIG.behindDistance
+    };
+  }
 
-    for (var g = 0; g < state.groups.length; g++) {
-      var group = state.groups[g];
-      var parts = group.parts;
-      var draw = group.mesh.instanceMatrix.array;
-      // whole group out of range: no per-instance work at all
-      if (
-        group.box &&
-        group.box.minX !== Infinity &&
-        distanceSqToBox(group.box, cx, cy, cz) > farRadius2
-      ) {
-        setCount(state, group, 0);
-        drawn += 0;
-        continue;
-      }
-      var write = 0;
-      for (var i = 0; i < parts.length; i++) {
-        var e = partElements(parts[i]);
-        if (!e) continue;
-        var x = e[12];
-        var y = e[13];
-        var z = e[14];
-        var dx = x - cx;
-        var dy = y - cy;
-        var dz = z - cz;
-        var distance2 = dx * dx + dy * dy + dz * dz;
-        if (distance2 > farRadius2) continue;
-        if (distance2 > radius2) {
-          // Outside the near circle: keep only what is inside the forward
-          // cone, so the distance the player can see is still drawn.
-          var hx = x - position.x;
-          var hz = z - position.z;
-          var hLength = Math.sqrt(hx * hx + hz * hz);
-          if (hLength < 0.001) continue;
-          if ((hx * forwardX + hz * forwardZ) / hLength < cosFar) continue;
-        }
-        if (behind > 0) {
-          // Horizontal distance behind the camera plane.
-          var back =
-            (x - position.x) * forwardX + (z - position.z) * forwardZ;
-          if (back < -behind) continue;
-        }
-        draw.set(e, write * 16);
-        write += 1;
-      }
-      setCount(state, group, write);
-      if (write > 0) upload(state, group, write);
-      drawn += write;
+  // Re-pack one part group against a frozen camera snapshot. Returns the number
+  // of instances left in its draw range; count and upload always move together,
+  // so a drawn range never points at data the GPU has not received.
+  function packGroup(state, group, p) {
+    var parts = group.parts;
+    var draw = group.mesh.instanceMatrix.array;
+    // whole group out of range: no per-instance work at all
+    if (
+      group.box &&
+      group.box.minX !== Infinity &&
+      distanceSqToBox(group.box, p.cx, p.cy, p.cz) > p.farRadius2
+    ) {
+      setCount(state, group, 0);
+      return 0;
     }
+    var write = 0;
+    for (var i = 0; i < parts.length; i++) {
+      var e = partElements(parts[i]);
+      if (!e) continue;
+      var x = e[12];
+      var y = e[13];
+      var z = e[14];
+      var dx = x - p.cx;
+      var dy = y - p.cy;
+      var dz = z - p.cz;
+      var distance2 = dx * dx + dy * dy + dz * dz;
+      if (distance2 > p.farRadius2) continue;
+      if (distance2 > p.radius2) {
+        // Outside the near circle: keep only what is inside the forward
+        // cone, so the distance the player can see is still drawn.
+        var hx = x - p.positionX;
+        var hz = z - p.positionZ;
+        var hLength = Math.sqrt(hx * hx + hz * hz);
+        if (hLength < 0.001) continue;
+        if ((hx * p.forwardX + hz * p.forwardZ) / hLength < p.cosFar) continue;
+      }
+      if (p.behind > 0) {
+        // Horizontal distance behind the camera plane.
+        var back =
+          (x - p.positionX) * p.forwardX + (z - p.positionZ) * p.forwardZ;
+        if (back < -p.behind) continue;
+      }
+      draw.set(e, write * 16);
+      write += 1;
+    }
+    setCount(state, group, write);
+    if (write > 0) upload(state, group, write);
+    return write;
+  }
 
-    state.mode = "windowed";
+  function beginPack(state, camera, spread) {
+    var p = packParams(state, camera);
+    if (!p) return;
+    state.packs += 1;
+    var drawn = 0;
+    for (var i = 0; i < state.groups.length; i++) {
+      drawn += state.groups[i].mesh.count;
+    }
     state.drawn = drawn;
-    state.lastPackX = position.x;
-    state.lastPackZ = position.z;
-    state.lastForwardX = forwardX;
-    state.lastForwardZ = forwardZ;
-    log("window packed", drawn, "of", state.total, "instances");
+    state.mode = "windowed";
+    state.job = { p: p, index: 0 };
+    state.lastPackX = p.positionX;
+    state.lastPackZ = p.positionZ;
+    state.lastForwardX = p.forwardX;
+    state.lastForwardZ = p.forwardZ;
+    state.lastPackCamera = camera;
+    var budget =
+      spread && CONFIG.uploadBytesPerFrame > 0
+        ? CONFIG.uploadBytesPerFrame
+        : Infinity;
+    pump(state, budget);
+  }
+
+  // Apply the pending re-pack a few groups at a time, so a long track never
+  // replaces its whole instance window (and uploads several megabytes) in a
+  // single frame. Each group switches atomically from its old window to the
+  // new one, so intermediate frames always draw uploaded geometry.
+  function pump(state, budgetBytes) {
+    var job = state.job;
+    if (!job) return;
+    var started = now();
+    var spent = 0;
+    var p = job.p;
+    var groups = state.groups;
+    while (job.index < groups.length) {
+      var group = groups[job.index];
+      var before = group.mesh.count;
+      var write = packGroup(state, group, p);
+      state.drawn += write - before;
+      job.index += 1;
+      spent += write * 64;
+      if (spent >= budgetBytes) break;
+    }
+    var slice = now() - started;
+    state.sliceMsLast = slice;
+    if (slice > state.sliceMsMax) state.sliceMsMax = slice;
+    if (job.index >= groups.length) {
+      state.job = null;
+      log("window packed", state.drawn, "of", state.total, "instances");
+    }
   }
 
   function cameraOf(state) {
@@ -377,7 +441,7 @@
     return state.lastCamera;
   }
 
-  function updateState(state, camera) {
+  function updateState(state, camera, spread) {
     if (!CONFIG.enabled || !state || !state.built || !state.eligible) return;
     camera = camera || cameraOf(state);
     if (!camera || !camera.position) return;
@@ -401,13 +465,13 @@
       return;
     }
 
+    // Horizontal bounds only: a jump can lift the camera above every part,
+    // and that must not restore (and upload) the whole track mid-race.
     var margin = Math.max(0, CONFIG.boundsMargin);
     var inside =
       state.minX !== Infinity &&
       position.x >= state.minX - margin &&
       position.x <= state.maxX + margin &&
-      position.y >= state.minY - margin &&
-      position.y <= state.maxY + margin &&
       position.z >= state.minZ - margin &&
       position.z <= state.maxZ + margin;
     if (!inside) {
@@ -436,10 +500,17 @@
         }
       }
     }
-    if (moved || state.mode !== "windowed") pack(state, camera);
-
-    // Debug-only: record the camera for PolyTrackTrack.stats().
-    state.lastPackCamera = camera;
+    var spreading = spread === true && state.mode === "windowed";
+    if (moved || state.mode !== "windowed") {
+      beginPack(state, camera, spreading);
+    } else {
+      pump(
+        state,
+        spreading && CONFIG.uploadBytesPerFrame > 0
+          ? CONFIG.uploadBytesPerFrame
+          : Infinity
+      );
+    }
   }
 
   function register(env, mesh, shadow, parts) {
@@ -508,7 +579,7 @@
     startTicker();
     log("track eligible for streaming", state.total, "instances");
     var camera = cameraOf(state);
-    if (camera) updateState(state, camera);
+    if (camera) updateState(state, camera, false);
   }
 
   function release(env) {
@@ -546,6 +617,10 @@
         groups: state.groups.length,
         radius: CONFIG.radius,
         step: CONFIG.repackStep,
+        packs: state.packs,
+        pending: state.job ? state.groups.length - state.job.index : 0,
+        sliceMsLast: Math.round(state.sliceMsLast * 100) / 100,
+        sliceMsMax: Math.round(state.sliceMsMax * 100) / 100,
         bounds: {
           min: { x: state.minX, y: state.minY, z: state.minZ },
           max: { x: state.maxX, y: state.maxY, z: state.maxZ }
@@ -572,7 +647,7 @@
       }
       ticker = global.requestAnimationFrame(frame);
       for (var i = 0; i < allStates.length; i++) {
-        updateState(allStates[i], null);
+        updateState(allStates[i], null, true);
       }
     };
     ticker = global.requestAnimationFrame(frame);
@@ -585,9 +660,11 @@
     config: CONFIG,
     register: register,
     release: release,
-    update: function (env, camera) {
+    // `spread` applies the re-pack a few groups per call (the frame ticker
+    // passes true); without it the whole window is applied at once.
+    update: function (env, camera, spread) {
       var state = states.get(env);
-      if (state) updateState(state, camera);
+      if (state) updateState(state, camera, spread === true);
     },
     // Tests/debug: compute eligibility now instead of on the next frame.
     finalize: function (env) {
