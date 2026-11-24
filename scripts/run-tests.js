@@ -60,12 +60,20 @@ addTest("Dynamic track loader present", () => {
   );
 });
 
-addTest("Leaderboard fetch uses null verified flag", () => {
-  const callSignature =
-    '.getLeaderboard(EC(this, $T, "f").getCurrentUserProfile().tokenHash, EC(this, YT, "f"), r, n, null)';
+addTest("Leaderboard fetch asks for verified runs and pages through them", () => {
   ensure(
-    bundle.includes(callSignature),
-    "Leaderboard fetch should pass null for verified filter"
+    bundle.includes(
+      '.getLeaderboard(EC(this, $T, "f").getCurrentUserProfile().tokenHash, EC(this, YT, "f"), r, n, EC(this, pC, "f"))'
+    ),
+    "The leaderboard fetch must pass the verified filter"
+  );
+  ensure(
+    bundle.includes('"&onlyVerified=" + r.toString()'),
+    "Every leaderboard request must carry onlyVerified"
+  );
+  ensure(
+    bundle.includes('const n = 20\n                      , r = EC(this, LB_PAGE, "f") * n;'),
+    "The leaderboard must page 20 rows at a time"
   );
 });
 
@@ -128,6 +136,19 @@ addTest("Static-host API fallback is wired into the page and bundle", () => {
   );
 });
 
+addTest("Proxies forward the sanitised leaderboard query with its question mark", () => {
+  const worker = fs.readFileSync(path.join(repoRoot, "worker", "index.js"), "utf8");
+  ensure(
+    worker.includes('search = "?" + sanitized.toString();'),
+    "The Worker must rebuild the upstream query with a leading ?"
+  );
+  const serve = fs.readFileSync(path.join(repoRoot, "scripts", "serve.js"), "utf8");
+  ensure(
+    serve.includes('"?" + policy.sanitizeLeaderboardSearch'),
+    "The dev proxy must rebuild the upstream query with a leading ?"
+  );
+});
+
 addTest("Worker proxies /api to the backend", () => {
   const worker = fs.readFileSync(path.join(repoRoot, "worker", "index.js"), "utf8");
   ensure(
@@ -178,11 +199,39 @@ addTest("Repo docs inside shipped directories are not published", () => {
   }
 });
 
-addTest("Leaderboard verified-state UI removed", () => {
+addTest("Leaderboard renders verified, pending and invalid rows distinctly", () => {
+  [
+    '.button.only-verified',
+    'verified-state pending',
+    'verified-state verified',
+    'verified-state invalid',
+    'images/state_verified.svg',
+    '"number" == typeof t.verifiedState ? t.verifiedState : null',
+  ].forEach((needle) => {
+    ensure(bundle.includes(needle), `Missing leaderboard verification UI: ${needle}`);
+  });
+});
+
+addTest("Leaderboard survives a backend that omits verification state", () => {
   ensure(
-    !bundle.includes('.button.only-verified') &&
-      !bundle.includes('verified-state pending'),
-    "Leaderboard verified UI remnants still found"
+    !bundle.includes('Entry is missing "verifiedState" field'),
+    "A missing verifiedState must not reject the whole leaderboard"
+  );
+  ensure(
+    bundle.includes('kC(this, pC, !1, "f")'),
+    "The list must start unfiltered so rows from an unverified backend render"
+  );
+  ensure(
+    bundle.includes('if (null != o) {') && bundle.includes('verified-state pending'),
+    "A row without a verification state must render without a badge"
+  );
+  ensure(
+    bundle.includes('EC(this, cC, "f").style.display = "none"'),
+    "The verified toggle must start hidden until the backend reports states"
+  );
+  ensure(
+    bundle.includes('s.some((e => null != e.verifiedState)) ? "" : "none"'),
+    "The verified toggle must be hidden when no row carries a verification state"
   );
 });
 
@@ -263,6 +312,236 @@ addTest("Adaptive render scale shows an indicator while it reduces resolution", 
   ensure(
     sandbox.__POLYTRACK_PERF__.INDICATOR_ID === "perf-indicator",
     "the indicator id must be exported for tests"
+  );
+});
+
+let policyModule = null;
+function loadPolicy() {
+  if (!policyModule) {
+    policyModule = import(
+      require("url").pathToFileURL(path.join(repoRoot, "worker", "leaderboard-policy.mjs")).href
+    );
+  }
+  return policyModule;
+}
+
+// Encodes a recording the way the game does: five runs of delta-encoded toggle
+// frames, zlib-compressed and base64url encoded.
+function encodeRecording(sections) {
+  const zlib = require("zlib");
+  const order = ["up", "right", "down", "left", "reset"];
+  const parts = order.map((key) => {
+    const frames = (sections && sections[key]) || [];
+    const buffer = Buffer.alloc(3 + frames.length * 3);
+    buffer.writeUIntLE(frames.length, 0, 3);
+    let previous = 0;
+    frames.forEach((frame, index) => {
+      buffer.writeUIntLE(index === 0 ? frame : frame - previous, 3 + index * 3, 3);
+      previous = frame;
+    });
+    return buffer;
+  });
+  return zlib
+    .deflateSync(Buffer.concat(parts), { level: 9 })
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function uploadParams(overrides) {
+  const params = new URLSearchParams({
+    version: "0.5.2",
+    userToken: "a".repeat(64),
+    name: "Tester",
+    carColors: "00112233445566778899aabb",
+    trackId: "b".repeat(64),
+    frames: "12345",
+    recording: encodeRecording({ up: [100], right: [200, 400] }),
+  });
+  for (const [key, value] of Object.entries(overrides || {})) params.set(key, value);
+  return params;
+}
+
+addTest("Leaderboard policy defaults to the full list and keeps an explicit filter", async () => {
+  const policy = await loadPolicy();
+  const bare = policy.sanitizeLeaderboardSearch("version=0.5.2&trackId=abc");
+  ensure(
+    bare.get("onlyVerified") === "false",
+    "Reads must default to the full list: this backend reports no verified rows"
+  );
+  ensure(
+    policy.sanitizeLeaderboardSearch("trackId=abc&onlyVerified=true").get("onlyVerified") === "true",
+    "The in-game toggle must be able to request verified runs only"
+  );
+  ensure(
+    policy.sanitizeLeaderboardSearch("trackId=abc&onlyVerified=false").get("onlyVerified") === "false",
+    "The in-game toggle must be able to request unverified rows"
+  );
+  ensure(
+    bare.get("amount") === String(policy.DEFAULT_PAGE_SIZE),
+    "A missing amount must use the default page size"
+  );
+  ensure(
+    policy.sanitizeLeaderboardSearch("amount=5000").get("amount") === String(policy.MAX_PAGE_SIZE),
+    "The page size must be capped"
+  );
+  ensure(policy.sanitizeLeaderboardSearch("skip=-4").get("skip") === "0", "Skip must be clamped");
+});
+
+addTest("Leaderboard policy refuses uploads whose recording contradicts the time", async () => {
+  const policy = await loadPolicy();
+  const good = await policy.validateLeaderboardUpload(uploadParams());
+  ensure(good.ok === true, `A valid upload was rejected: ${good.reason || ""}`);
+
+  const impossible = await policy.validateLeaderboardUpload(
+    uploadParams({ recording: encodeRecording({ up: [12346] }) })
+  );
+  ensure(impossible.ok === false, "An input after the claimed finish frame must be rejected");
+
+  const onFinishFrame = await policy.validateLeaderboardUpload(
+    uploadParams({ recording: encodeRecording({ up: [12345] }) })
+  );
+  ensure(
+    onFinishFrame.ok === true,
+    "A control pressed on the finish frame must not be rejected"
+  );
+
+  // Restarting mid-run records reset toggles on the same timeline; the earlier
+  // attempt must stay behind the finish time and be accepted.
+  const withRestarts = await policy.validateLeaderboardUpload(
+    uploadParams({ recording: encodeRecording({ up: [100], reset: [500, 900], right: [600] }) })
+  );
+  ensure(
+    withRestarts.ok === true,
+    `A run with mid-race restarts was rejected: ${withRestarts.reason || ""}`
+  );
+
+  const undecodable = await policy.validateLeaderboardUpload(
+    uploadParams({ recording: "not-a-recording" })
+  );
+  ensure(undecodable.ok === false, "An undecodable recording must be rejected");
+
+  const badToken = await policy.validateLeaderboardUpload(uploadParams({ userToken: "abc" }));
+  ensure(badToken.ok === false, "A malformed token must be rejected");
+
+  const badFrames = await policy.validateLeaderboardUpload(uploadParams({ frames: "0" }));
+  ensure(badFrames.ok === false, "A non-positive frame count must be rejected");
+});
+
+addTest("Leaderboard policy treats a missing state as unknown, never invalid", async () => {
+  const policy = await loadPolicy();
+  const classified = policy.classifyEntries([
+    { id: 1, frames: 100, verifiedState: 1 },
+    { id: 2, frames: 200, verifiedState: 2 },
+    { id: 3, frames: 300 },
+  ]);
+  ensure(classified.verified.length === 1, "A verified row must be counted as verified");
+  ensure(classified.invalid.length === 1, "An explicitly rejected row must be invalid");
+  ensure(
+    classified.unknown.length === 1 && classified.unknown[0] === 3,
+    "A row with no state must be unknown, not quarantinable"
+  );
+  ensure(policy.describeVerifiedState(undefined) === "unknown", "Missing states have no label");
+});
+
+addTest("A real finished recording passes the upload validator", async () => {
+  const policy = await loadPolicy();
+  const fixture = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "scripts", "fixtures", "recording-0.5.2.json"), "utf8")
+  );
+  const maxInput = await policy.maximumInputFrame(fixture.recording);
+  ensure(
+    Number.isSafeInteger(maxInput) && maxInput < fixture.frames,
+    `The decoder must place the last input before the finish (got ${maxInput} vs ${fixture.frames})`
+  );
+  ensure(
+    maxInput > fixture.frames * 0.5,
+    "A finished run's inputs must extend through most of the race"
+  );
+
+  const accepted = await policy.validateLeaderboardUpload(
+    uploadParams({
+      trackId: fixture.trackId,
+      carColors: fixture.carColors,
+      frames: String(fixture.frames),
+      recording: fixture.recording,
+    })
+  );
+  ensure(accepted.ok === true, `A legitimate finished run was rejected: ${accepted.reason || ""}`);
+
+  const onLastInput = await policy.validateLeaderboardUpload(
+    uploadParams({
+      trackId: fixture.trackId,
+      carColors: fixture.carColors,
+      frames: String(maxInput),
+      recording: fixture.recording,
+    })
+  );
+  ensure(onLastInput.ok === true, "A finish frame equal to the last input is legal");
+
+  const contradicted = await policy.validateLeaderboardUpload(
+    uploadParams({
+      trackId: fixture.trackId,
+      carColors: fixture.carColors,
+      frames: String(maxInput - 1),
+      recording: fixture.recording,
+    })
+  );
+  ensure(contradicted.ok === false, "A time before the last input must be rejected");
+});
+
+addTest("Leaderboard policy drops quarantined rows and keeps totals consistent", async () => {
+  const policy = await loadPolicy();
+  const payload = {
+    total: 10,
+    entries: [
+      { id: 1, name: "cheater", frames: 1000, verifiedState: 2 },
+      { id: 2, name: "clean", frames: 2000, verifiedState: 1 },
+    ],
+    userEntry: { position: 1, frames: 1000, id: 1 },
+  };
+  const filtered = policy.filterLeaderboardPayload(payload, new Set([1]));
+  ensure(filtered.removed === 1, "The quarantined row must be removed");
+  ensure(
+    filtered.payload.entries.length === 1 && filtered.payload.entries[0].id === 2,
+    "Only clean rows must remain"
+  );
+  ensure(filtered.payload.total === 9, "The total must shrink with the row");
+  ensure(filtered.payload.userEntry === null, "A quarantined user entry must be cleared");
+
+  const classified = policy.classifyEntries(payload.entries);
+  ensure(
+    classified.invalid.length === 1 && classified.invalid[0] === 1,
+    "Invalid rows must be classified"
+  );
+  ensure(
+    classified.verified.length === 1 && classified.verified[0] === 2,
+    "Verified rows must be classified"
+  );
+});
+
+addTest("Leaderboard policy ships with the Worker, dev proxy and audit tool", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "sites.manifest.json"), "utf8"));
+  const names = manifest.modules.map((entry) => entry.name);
+  ["leaderboard-policy.mjs", "leaderboard-quarantine.mjs"].forEach((name) => {
+    ensure(names.includes(name), `The deploy manifest is missing ${name}`);
+  });
+  const worker = fs.readFileSync(path.join(repoRoot, "worker", "index.js"), "utf8");
+  ensure(
+    worker.includes("sanitizeLeaderboardSearch") && worker.includes("validateLeaderboardUpload"),
+    "The Worker must apply the leaderboard policy"
+  );
+  const serve = fs.readFileSync(path.join(repoRoot, "scripts", "serve.js"), "utf8");
+  ensure(serve.includes("leaderboard-policy.mjs"), "The dev proxy must apply the same policy");
+  ensure(
+    fs.existsSync(path.join(repoRoot, "scripts", "audit-leaderboard.js")),
+    "The leaderboard audit tool is missing"
+  );
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  ensure(
+    pkg.scripts["audit:leaderboard"],
+    "package.json must expose the audit tool as audit:leaderboard"
   );
 });
 

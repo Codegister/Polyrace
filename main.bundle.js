@@ -1534,7 +1534,7 @@
               , r = n.n(i)
               , a = n(6314)
               , s = n.n(a)()(r());
-            s.push([e.id, "\n.leaderboard {\n\tposition: relative;\n\tmargin: 0;\n\tpadding: 0;\n\twidth: 600px;\n\theight: 100%;\n\ttext-align: left;\n\tdisplay: flex;\n\tflex-shrink: 0;\n\tflex-direction: column;\n\tbackground-color: var(--surface-color);\n}\n\n.leaderboard > h2 {\n\tmargin: 10px 10px 0 10px;\n\tpadding: 0;\n\tfont-weight: normal;\n\tfont-size: 38px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > h3 {\n\tmargin: 0 10px 10px 10px;\n\tpadding: 0;\n\tfont-weight: normal;\n\tfont-size: 18px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n\topacity: 0.5;\n}\n\n.leaderboard > .total-players {\n\tmargin: 10px;\n\tposition: absolute;\n\tright: 0;\n\ttop: 0;\n\ttext-align: center;\n\tfont-size: 14px;\n\tcolor: var(--text-color);\n\topacity: 0;\n\ttransition: opacity 0.5s ease-out;\n}\n.leaderboard > .total-players.fade-in {\n\topacity: 0.5;\n}\n\n.leaderboard > .container {\n\tmargin: 0;\n\tpadding: 0;\n\tflex-grow: 1;\n\tbackground-color: var(--surface-secondary-color);\n\toverflow-x: hidden;\n\toverflow-y: scroll;\n\tpointer-events: auto;\n}\n\n.leaderboard > .container > .loading-spinner-container {\n\tdisplay: flex;\n\tjustify-content: center;\n\talign-items: center;\n\twidth: 100%;\n\theight: 100%;\n}\n\n.leaderboard > .container > .error-message {\n\tpadding: 0 20px;\n\tfont-size: 20px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > .container > button.main {\n\tmargin: 10px 10px 0 10px;\n\tpadding: 0;\n\tvertical-align: top;\n\twidth: calc(100% - 10px * 2);\n\theight: 100px;\n\tclip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);\n\ttext-align: left;\n\twhite-space: nowrap;\n}\n.leaderboard > .container > button.main:last-of-type {\n\tmargin-bottom: 10px;\n}\n\n.leaderboard > .container > button.main.self:not(:focus-visible) {\n\tbackground-color: #2e4182;\n}\n\n.leaderboard > .container > button.main.selected {\n\tbackground-color: var(--button-hover-color);\n}\n.leaderboard > .container > button.main.selected::after {\n\twidth: 100%;\n}\n\n.leaderboard > .container > button.main > .checkmark {\n\tdisplay: none;\n}\n\n.leaderboard > .container > button.main.selected > .checkmark {\n\tdisplay: block;\n\tposition: absolute;\n\tright: 0;\n\ttop: 0;\n\tmargin: 6px;\n\twidth: 12px;\n\tanimation: leaderboard-checkmark-spawn 0.15s ease-out;\n}\n\n@keyframes leaderboard-checkmark-spawn {\n\t0% {\n\t\ttransform: scale(0);\n\t}\n\t90% {\n\t\ttransform: scale(1.2);\n\t}\n\t100% {\n\t\ttransform: scale(1);\n\t}\n}\n\n.leaderboard > .container > button.main > .image-container {\n\tdisplay: inline-block;\n\tposition: relative;\n\tbackground-color: rgba(0, 0, 0, 0.1);\n\twidth: 100px;\n\theight: 100px;\n}\n\n.leaderboard > .container > button.main > .image-container > img {\n\tposition: absolute;\n\tleft: 0;\n\ttop: 0;\n\twidth: 100%;\n\theight: 100%;\n\tpointer-events: none;\n\topacity: 0;\n\ttransition: opacity 0.5s ease-out;\n}\n.leaderboard > .container > button.main > .image-container > img.show {\n\topacity: 1;\n}\n\n.leaderboard > .container > button.main > .left, .leaderboard > .container > button.main > .right {\n\tdisplay: inline-block;\n\tvertical-align: top;\n}\n\n.leaderboard > .container > button.main > div > p {\n\tmargin: 0;\n\tpadding: 12px;\n\tfont-size: 28px;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > .container > button.main > div > .position > span {\n\tfont-size: 20px;\n\topacity: 0.3;\n}\n\n.leaderboard > .container > button.main > div > .name-container {\n\tmargin: 0;\n\tpadding: 0;\n\tfont-size: 28px;\n\tdisplay: flex;\n\talign-items: center;\n\twidth: 360px;\n}\n\n.leaderboard > .container > button.main > div > .name-container > .name {\n\tpadding: 12px;\n\ttext-overflow: ellipsis;\n\toverflow: hidden;\n}\n.leaderboard > .container > button.main:focus-visible > div > .name-container > .name {\n\ttext-decoration: underline;\n}\n\n.leaderboard > .container > button.main > div > .name-container > .self {\n\tmargin-left: -16px;\n\tpadding: 12px;\n\topacity: 0.5;\n\tfont-size: 16px;\n\tfont-style: normal;\n}\n\n\n\n.leaderboard > .button-wrapper > .back {\n\tmargin: 10px;\n}\n\n\n\n.leaderboard > .button-wrapper > .icon-button {\n\tmargin: 10px 0;\n\tfloat: right;\n}\n.leaderboard > .button-wrapper > .icon-button.first {\n\tmargin: 10px 10px 10px 0;\n}\n\n.leaderboard > .button-wrapper > .icon-button > img {\n\twidth: 28px;\n}\n.leaderboard > .button-wrapper > .icon-button.disabled > img, .leaderboard > .button-wrapper > .icon-button:disabled > img {\n\topacity: 0.25;\n}\n", ""]);
+            s.push([e.id, "\n.leaderboard {\n\tposition: relative;\n\tmargin: 0;\n\tpadding: 0;\n\twidth: 600px;\n\theight: 100%;\n\ttext-align: left;\n\tdisplay: flex;\n\tflex-shrink: 0;\n\tflex-direction: column;\n\tbackground-color: var(--surface-color);\n}\n\n.leaderboard > h2 {\n\tmargin: 10px 10px 0 10px;\n\tpadding: 0;\n\tfont-weight: normal;\n\tfont-size: 38px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > h3 {\n\tmargin: 0 10px 10px 10px;\n\tpadding: 0;\n\tfont-weight: normal;\n\tfont-size: 18px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n\topacity: 0.5;\n}\n\n.leaderboard > .total-players {\n\tmargin: 10px;\n\tposition: absolute;\n\tright: 0;\n\ttop: 0;\n\ttext-align: center;\n\tfont-size: 14px;\n\tcolor: var(--text-color);\n\topacity: 0;\n\ttransition: opacity 0.5s ease-out;\n}\n.leaderboard > .total-players.fade-in {\n\topacity: 0.5;\n}\n\n.leaderboard > .container {\n\tmargin: 0;\n\tpadding: 0;\n\tflex-grow: 1;\n\tbackground-color: var(--surface-secondary-color);\n\toverflow-x: hidden;\n\toverflow-y: scroll;\n\tpointer-events: auto;\n}\n\n.leaderboard > .container > .loading-spinner-container {\n\tdisplay: flex;\n\tjustify-content: center;\n\talign-items: center;\n\twidth: 100%;\n\theight: 100%;\n}\n\n.leaderboard > .container > .error-message {\n\tpadding: 0 20px;\n\tfont-size: 20px;\n\ttext-align: center;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > .container > button.main {\n\tmargin: 10px 10px 0 10px;\n\tpadding: 0;\n\tvertical-align: top;\n\twidth: calc(100% - 10px * 2);\n\theight: 100px;\n\tclip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);\n\ttext-align: left;\n\twhite-space: nowrap;\n}\n.leaderboard > .container > button.main:last-of-type {\n\tmargin-bottom: 10px;\n}\n\n.leaderboard > .container > button.main.self:not(:focus-visible) {\n\tbackground-color: #2e4182;\n}\n\n.leaderboard > .container > button.main.selected {\n\tbackground-color: var(--button-hover-color);\n}\n.leaderboard > .container > button.main.selected::after {\n\twidth: 100%;\n}\n\n.leaderboard > .container > button.main > .checkmark {\n\tdisplay: none;\n}\n\n.leaderboard > .container > button.main.selected > .checkmark {\n\tdisplay: block;\n\tposition: absolute;\n\tright: 0;\n\ttop: 0;\n\tmargin: 6px;\n\twidth: 12px;\n\tanimation: leaderboard-checkmark-spawn 0.15s ease-out;\n}\n\n@keyframes leaderboard-checkmark-spawn {\n\t0% {\n\t\ttransform: scale(0);\n\t}\n\t90% {\n\t\ttransform: scale(1.2);\n\t}\n\t100% {\n\t\ttransform: scale(1);\n\t}\n}\n\n.leaderboard > .container > button.main > .image-container {\n\tdisplay: inline-block;\n\tposition: relative;\n\tbackground-color: rgba(0, 0, 0, 0.1);\n\twidth: 100px;\n\theight: 100px;\n}\n\n.leaderboard > .container > button.main > .image-container > img {\n\tposition: absolute;\n\tleft: 0;\n\ttop: 0;\n\twidth: 100%;\n\theight: 100%;\n\tpointer-events: none;\n\topacity: 0;\n\ttransition: opacity 0.5s ease-out;\n}\n.leaderboard > .container > button.main > .image-container > img.show {\n\topacity: 1;\n}\n\n.leaderboard > .container > button.main > .left, .leaderboard > .container > button.main > .right {\n\tdisplay: inline-block;\n\tvertical-align: top;\n}\n\n.leaderboard > .container > button.main > div > p {\n\tmargin: 0;\n\tpadding: 12px;\n\tfont-size: 28px;\n\tcolor: var(--text-color);\n}\n\n.leaderboard > .container > button.main > div > .position > span {\n\tfont-size: 20px;\n\topacity: 0.3;\n}\n\n.leaderboard > .container > button.main > div > .name-container {\n\tmargin: 0;\n\tpadding: 0;\n\tfont-size: 28px;\n\tdisplay: flex;\n\talign-items: center;\n\twidth: 360px;\n}\n\n.leaderboard > .container > button.main > div > .name-container > .name {\n\tpadding: 12px;\n\ttext-overflow: ellipsis;\n\toverflow: hidden;\n}\n.leaderboard > .container > button.main:focus-visible > div > .name-container > .name {\n\ttext-decoration: underline;\n}\n\n.leaderboard > .container > button.main > div > .name-container > .self {\n\tmargin-left: -16px;\n\tpadding: 12px;\n\topacity: 0.5;\n\tfont-size: 16px;\n\tfont-style: normal;\n}\n\n.leaderboard > .container > button.main > div > .verified-state {\n\topacity: 0.8;\n\tposition: absolute;\n\tright: 6px;\n\tmargin: 6px 0 0 0;\n\tfont-size: 18px;\n}\n.leaderboard > .container > button.main > div > .verified-state > img {\n\tmargin: 0 0 0 2px;\n\tpadding: 0;\n\theight: 12px;\n\tvertical-align: middle;\n}\n.leaderboard > .container > button.main > div > .verified-state.verified {\n\tcolor: #5f5;\n}\n.leaderboard > .container > button.main > div > .verified-state.invalid {\n\tcolor: #f55;\n}\n.leaderboard > .container > button.main > div > .verified-state.pending {\n\tcolor: #ff5;\n}\n\n.leaderboard > .pages {\n\tmargin: 10px 10px 0 10px;\n\tdisplay: flex;\n\tflex-direction: row;\n}\n.leaderboard > .pages > button.page {\n\tpadding: 0;\n\twidth: 0;\n\tflex-grow: 1;\n}\n.leaderboard > .pages > button.selected {\n\tbackground-color: var(--button-hover-color);\n}\n\n.leaderboard > .button-wrapper > .back {\n\tmargin: 10px;\n}\n\n.leaderboard > .button-wrapper > .button.only-verified {\n\tmargin: 10px 0;\n\tfloat: right;\n\tfont-size: 20px;\n\tline-height: 32px;\n}\n.leaderboard > .button-wrapper > .button.only-verified.disabled {\n\tcolor: rgba(255, 255, 255, 0.25);\n}\n\n.leaderboard > .button-wrapper > .button.only-verified > img {\n\tmargin-left: 6px;\n\tmargin-bottom: -4px;\n\twidth: 26px;\n}\n.leaderboard > .button-wrapper > .button.only-verified.disabled > img {\n\topacity: 0.25;\n}\n\n.leaderboard > .button-wrapper > .icon-button {\n\tmargin: 10px 0;\n\tfloat: right;\n}\n.leaderboard > .button-wrapper > .icon-button.first {\n\tmargin: 10px 10px 10px 0;\n}\n\n.leaderboard > .button-wrapper > .icon-button > img {\n\twidth: 28px;\n}\n.leaderboard > .button-wrapper > .icon-button.disabled > img, .leaderboard > .button-wrapper > .icon-button:disabled > img {\n\topacity: 0.25;\n}\n", ""]);
             const o = s
         }
         ,
@@ -37745,7 +37745,7 @@
             e[e.InvalidDuplicate = 3] = "InvalidDuplicate",
             e[e.InvalidManual = 4] = "InvalidManual"
         }(VT || (VT = {}));
-var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, uC, pC, vC, wC, yC, bC, AC, kC = function(e, t, n, i, r) {
+var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, uC, pC, vC, wC,         yC, bC, AC, LB_PAGER, kC = function(e, t, n, i, r) {
             if ("m" === i)
                 throw new TypeError("Private method is not writable");
             if ("a" === i && !r)
@@ -37761,9 +37761,19 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 throw new TypeError("Cannot read private member from an object whose class did not declare it");
             return "m" === n ? i : "a" === n ? i.call(e) : i ? i.value : t.get(e)
         };
+        var LB_SUPPORTED = new WeakMap,
+        LB_PAGE = new WeakMap,
+        LB_PAGES = new WeakMap,
+        LB_USER_PAGE = new WeakMap,
+        LB_PAGER_CONTAINER = new WeakMap;
         class SC {
             constructor(e, t, n, i, r, a, s, o, l, c, h) {
                 KT.add(this),
+                LB_SUPPORTED.set(this, void 0),
+                LB_PAGE.set(this, void 0),
+                LB_PAGES.set(this, void 0),
+                LB_USER_PAGE.set(this, void 0),
+                LB_PAGER_CONTAINER.set(this, void 0),
                 YT.set(this, void 0),
                 XT.set(this, void 0),
                 ZT.set(this, void 0),
@@ -37792,7 +37802,15 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 kC(this, eC, s, "f"),
                 kC(this, tC, c, "f"),
                 kC(this, nC, h, "f"),
-                kC(this, pC, o.isOfficialTrack(t) || o.isCommunityTrack(t) ? !0 : null, "f"),
+                kC(this, LB_SUPPORTED, o.isOfficialTrack(t) || o.isCommunityTrack(t), "f"),
+                // This mirror's backend carries no verification data (it omits
+                // verifiedState and answers onlyVerified=true with nothing), so the
+                // unfiltered list is the only one that can render. The toggle can
+                // still ask for verified-only runs once the backend supplies them.
+                kC(this, pC, !1, "f"),
+                kC(this, LB_PAGE, 0, "f"),
+                kC(this, LB_PAGES, 0, "f"),
+                kC(this, LB_USER_PAGE, null, "f"),
                 kC(this, iC, e, "f"),
                 kC(this, rC, document.createElement("div"), "f"),
                 EC(this, rC, "f").className = "leaderboard",
@@ -37816,6 +37834,9 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 const f = document.createElement("div");
                 f.className = "loading-spinner",
                 EC(this, oC, "f").appendChild(f),
+                kC(this, LB_PAGER_CONTAINER, document.createElement("div"), "f"),
+                EC(this, LB_PAGER_CONTAINER, "f").className = "pages",
+                EC(this, rC, "f").appendChild(EC(this, LB_PAGER_CONTAINER, "f")),
                 EC(this, KT, "m", bC).call(this, !1);
                 const m = document.createElement("div");
                 m.className = "button-wrapper",
@@ -37836,10 +37857,30 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 EC(this, lC, "f").disabled = !0,
                 EC(this, lC, "f").addEventListener("click", ( () => {
                     r.playUIClick(),
-                    EC(this, KT, "m", yC).call(this, "smooth")
+                    null != EC(this, vC, "f") ? EC(this, KT, "m", yC).call(this, "smooth") : null != EC(this, LB_USER_PAGE, "f") && (kC(this, LB_PAGE, EC(this, LB_USER_PAGE, "f"), "f"),
+                    EC(this, KT, "m", LB_PAGER).call(this),
+                    EC(this, KT, "m", bC).call(this, !0))
                 }
                 )),
-                m.appendChild(EC(this, lC, "f"))
+                m.appendChild(EC(this, lC, "f")),
+                kC(this, cC, document.createElement("button"), "f"),
+                EC(this, cC, "f").className = "button only-verified",
+                EC(this, pC, "f") || EC(this, cC, "f").classList.add("disabled"),
+                EC(this, cC, "f").textContent = n.get("Only verified"),
+                // Shown only once the backend proves it labels runs (see bC).
+                EC(this, cC, "f").style.display = "none",
+                EC(this, cC, "f").innerHTML += '<img class="button-icon" src="images/verified.svg">',
+                EC(this, cC, "f").addEventListener("click", ( () => {
+                    r.playUIClick(),
+                    EC(this, LB_SUPPORTED, "f") && (kC(this, pC, !EC(this, pC, "f"), "f"),
+                    EC(this, pC, "f") ? EC(this, cC, "f").classList.remove("disabled") : EC(this, cC, "f").classList.add("disabled"),
+                    kC(this, LB_PAGE, 0, "f"),
+                    kC(this, LB_PAGES, 0, "f"),
+                    EC(this, KT, "m", LB_PAGER).call(this),
+                    EC(this, KT, "m", bC).call(this, !1))
+                }
+                )),
+                m.appendChild(EC(this, cC, "f"))
             }
             dispose() {
                 var e;
@@ -37913,7 +37954,7 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
             kC(this, vC, null, "f"),
             setTimeout(( () => {
                 if (!i.isCancelled) {
-                    if (null === EC(this, pC, "f")) {
+                    if (!EC(this, LB_SUPPORTED, "f")) {
                         const e = document.createElement("p");
                         e.className = "error-message",
                         e.textContent = "Leaderboards are not yet supported on custom tracks.",
@@ -37929,20 +37970,28 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                         EC(this, sC, "f").removeChild(EC(this, oC, "f"));
                         return
                     }
-                    const n = 10
-                      , r = 0;
-                    EC(this, ZT, "f").getLeaderboard(EC(this, $T, "f").getCurrentUserProfile().tokenHash, EC(this, YT, "f"), r, n, null).then(( ({total: a, entries: s, userEntry: o}) => {
+                    const n = 20
+                      , r = EC(this, LB_PAGE, "f") * n;
+                    EC(this, ZT, "f").getLeaderboard(EC(this, $T, "f").getCurrentUserProfile().tokenHash, EC(this, YT, "f"), r, n, EC(this, pC, "f")).then(( ({total: a, entries: s, userEntry: o}) => {
                         if (!i.isCancelled) {
+                            // Verification controls only when the backend labels runs;
+                            // an empty page keeps the current state so the toggle can be
+                            // used to switch back.
+                            s.length > 0 && (EC(this, cC, "f").style.display = s.some((e => null != e.verifiedState)) ? "" : "none"),
+                            kC(this, LB_PAGES, Math.ceil(a / n), "f"),
+                            EC(this, KT, "m", LB_PAGER).call(this),
                             EC(this, aC, "f").textContent = EC(this, XT, "f").get("{0} players", [GT(a)]),
                             EC(this, aC, "f").classList.add("fade-in");
                             for (let e = 0; e < s.length; e++) {
-                                const {id: t, name: n, time: a, carColors: o, isSelf: c} = s[e]
-                                  , h = r + e + 1;
-                                EC(this, KT, "m", AC).call(this, h, n, a, o, c, t, i)
+                                const {id: t, name: n, time: a, carColors: o, verifiedState: c, isSelf: h} = s[e]
+                                  , d = r + e + 1;
+                                EC(this, KT, "m", AC).call(this, d, n, a, o, h, t, i, c)
                             }
                             if (EC(this, ZT, "f").determinismState == HT.Ok && (null != o ? (EC(this, lC, "f").disabled = !1,
+                            kC(this, LB_USER_PAGE, Math.floor((o.position - 1) / n), "f"),
                             t && null != EC(this, vC, "f") && EC(this, KT, "m", yC).call(this, "instant"),
-                            EC(this, nC, "f").call(this, o, a)) : (EC(this, lC, "f").disabled = !0,
+                            EC(this, nC, "f").call(this, o, a)) : (kC(this, LB_USER_PAGE, null, "f"),
+                            EC(this, lC, "f").disabled = !0,
                             EC(this, nC, "f").call(this, null, a)),
                             !EC(this, uC, "f"))) {
                                 kC(this, uC, !0, "f");
@@ -37985,7 +38034,7 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
             ), 500)
         }
         ,
-        AC = function(e, t, n, i, r, a, s) {
+        AC = function(e, t, n, i, r, a, s, o) {
             const l = document.createElement("button");
             l.className = "button main",
             r && (kC(this, vC, l, "f"),
@@ -38052,6 +38101,66 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 e.className = "self",
                 e.textContent = "(" + EC(this, XT, "f").get("You") + ")",
                 w.appendChild(e)
+            }
+            if (null != o) {
+            const b = document.createElement("p");
+            o == VT.Pending ? (b.innerHTML = '<img src="images/state_pending.svg">',
+            b.prepend(document.createTextNode(EC(this, XT, "f").get("Pending"))),
+            b.className = "verified-state pending") : o == VT.Verified ? (b.innerHTML = '<img src="images/state_verified.svg">',
+            b.prepend(document.createTextNode(EC(this, XT, "f").get("Verified"))),
+            b.className = "verified-state verified") : o == VT.InvalidDuplicate ? (b.innerHTML = '<img src="images/state_invalid.svg">',
+            b.prepend(document.createTextNode(EC(this, XT, "f").get("Duplicate"))),
+            b.className = "verified-state invalid") : (b.innerHTML = '<img src="images/state_invalid.svg">',
+            b.prepend(document.createTextNode(EC(this, XT, "f").get("Invalid"))),
+            b.className = "verified-state invalid"),
+            v.appendChild(b)
+            }
+        }
+        ,
+        LB_PAGER = function() {
+            if (null == EC(this, LB_PAGER_CONTAINER, "f"))
+                return;
+            EC(this, LB_PAGER_CONTAINER, "f").innerHTML = "";
+            const e = EC(this, LB_PAGES, "f");
+            if (!(e <= 1)) {
+                const t = EC(this, LB_PAGE, "f")
+                  , n = Math.min(e, 7)
+                  , i = Math.max(0, Math.min(t - Math.floor(n / 2), e - n))
+                  , r = document.createElement("button");
+                r.className = "button",
+                r.textContent = "<",
+                t <= 0 ? r.disabled = !0 : r.addEventListener("click", ( () => {
+                    EC(this, JT, "f").playUIClick(),
+                    kC(this, LB_PAGE, t - 1, "f"),
+                    EC(this, KT, "m", LB_PAGER).call(this),
+                    EC(this, KT, "m", bC).call(this, !1)
+                }
+                )),
+                EC(this, LB_PAGER_CONTAINER, "f").appendChild(r);
+                for (let t = i; t < i + n; ++t) {
+                    const n = document.createElement("button");
+                    n.textContent = (t + 1).toString(),
+                    t == EC(this, LB_PAGE, "f") ? n.className = "button page selected" : (n.className = "button page",
+                    n.addEventListener("click", ( () => {
+                        EC(this, JT, "f").playUIClick(),
+                        kC(this, LB_PAGE, t, "f"),
+                        EC(this, KT, "m", LB_PAGER).call(this),
+                        EC(this, KT, "m", bC).call(this, !1)
+                    }
+                    ))),
+                    EC(this, LB_PAGER_CONTAINER, "f").appendChild(n)
+                }
+                const a = document.createElement("button");
+                a.className = "button",
+                a.textContent = ">",
+                t + 1 >= e ? a.disabled = !0 : a.addEventListener("click", ( () => {
+                    EC(this, JT, "f").playUIClick(),
+                    kC(this, LB_PAGE, t + 1, "f"),
+                    EC(this, KT, "m", LB_PAGER).call(this),
+                    EC(this, KT, "m", bC).call(this, !1)
+                }
+                )),
+                EC(this, LB_PAGER_CONTAINER, "f").appendChild(a)
             }
         }
         ;
@@ -44456,8 +44565,7 @@ gN = function(e) {
                 YU.set(this, 1e4)
             }
             getLeaderboard(e, t, n, i, r) {
-                let a = vu + "leaderboard?version=" + bu + "&trackId=" + t + "&skip=" + n.toString() + "&amount=" + i.toString();
-                null != r && (a += "&onlyVerified=" + r.toString());
+                let a = vu + "leaderboard?version=" + bu + "&trackId=" + t + "&skip=" + n.toString() + "&amount=" + i.toString() + "&onlyVerified=" + r.toString();
                 return this.determinismState == HT.Ok && (a += "&userTokenHash=" + encodeURIComponent(e)),
                 new Promise(( (t, n) => {
                     const i = new XMLHttpRequest;
@@ -44502,11 +44610,14 @@ gN = function(e) {
                                             return void n(new Error('"frames" field has an invalid value'));
                                         if ("string" != typeof t.carColors)
                                             return void n(new Error('"carColors" field has incorrect type'));
+                                        if (null != t.verifiedState && (!Number.isSafeInteger(t.verifiedState) || t.verifiedState < 0))
+                                            return void n(new Error('"verifiedState" field has an invalid value'));
                                         o.push({
                                             id: t.id,
                                             name: t.name,
                                             time: new Gp(t.frames),
                                             carColors: np.deserialize(t.carColors),
+                                            verifiedState: "number" == typeof t.verifiedState ? t.verifiedState : null,
                                             isSelf: t.userId == e
                                         })
                                     }
@@ -44691,29 +44802,7 @@ gN = function(e) {
                             d.setRequestHeader("Content-Type", "application/x-www-form-urlencoded"),
                             d.send(u)
                             };
-                            const h = this;
-                            const f = () => {
-                                h.getLeaderboard("", i, 0, 10, null).then((e => {
-                                    if (e && Array.isArray(e.entries) && e.entries.length >= 10) {
-                                        const t = e.entries[Math.min(9, e.entries.length - 1)];
-                                        if (t && "number" == typeof t.frames && a.numberOfFrames >= t.frames)
-                                            return void o({
-                                                uploadId: null,
-                                                positionChange: null
-                                            })
-                                    }
-                                    u()
-                                }
-                                )).catch(( () => {
-                                    u()
-                                }
-                                ))
-                            };
-                            try {
-                                f()
-                            } catch (e) {
-                                u()
-                            }
+                            u()
                         }
                     }
                 }

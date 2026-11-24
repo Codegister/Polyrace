@@ -54,12 +54,20 @@ function send(res, status, body, headers) {
 }
 
 // The browser calls the leaderboard backend through `/api/` (see
-// worker/index.js). Mirror that proxy locally so the game behaves the same.
+// worker/index.js). Mirror that proxy locally so the game behaves the same,
+// including the origin-side leaderboard policy the Worker applies.
 const API_ORIGIN = "https://polytrack-backend.htmlunblockedgames.workers.dev";
+const policyPromise = import(
+  require("url").pathToFileURL(path.join(__dirname, "..", "worker", "leaderboard-policy.mjs")).href
+);
+const quarantinePromise = import(
+  require("url").pathToFileURL(path.join(__dirname, "..", "worker", "leaderboard-quarantine.mjs")).href
+);
 
 function proxyApi(req, res) {
   const url = new URL(req.url, "http://localhost");
-  const target = API_ORIGIN + url.pathname.slice("/api".length) + url.search;
+  const isLeaderboard = url.pathname === "/api/leaderboard";
+  const isRead = req.method === "GET" || req.method === "HEAD";
   const chunks = [];
   req.on("data", (chunk) => chunks.push(chunk));
   req.on("error", () =>
@@ -67,21 +75,57 @@ function proxyApi(req, res) {
   );
   req.on("end", async () => {
     try {
+      const [policy, quarantineModule] = await Promise.all([policyPromise, quarantinePromise]);
+      const quarantined = policy.parseQuarantine(quarantineModule.default);
+      const body = Buffer.concat(chunks);
+
+      let search = url.search;
+      if (isLeaderboard && isRead) {
+        // URLSearchParams.toString() omits the leading "?".
+        search = "?" + policy.sanitizeLeaderboardSearch(url.search).toString();
+      }
+
+      if (isLeaderboard && req.method === "POST") {
+        const verdict = await policy.validateLeaderboardUpload(
+          new URLSearchParams(body.toString("utf8"))
+        );
+        if (!verdict.ok) {
+          return send(res, 400, `Rejected by leaderboard policy: ${verdict.reason}`, {
+            "content-type": "text/plain; charset=utf-8",
+          });
+        }
+      }
+
+      const target = API_ORIGIN + url.pathname.slice("/api".length) + search;
       const headers = {};
       if (req.headers["content-type"]) headers["content-type"] = req.headers["content-type"];
       const upstream = await fetch(target, {
         method: req.method,
         headers,
-        body: req.method === "POST" ? Buffer.concat(chunks) : undefined,
+        body: req.method === "POST" ? body : undefined,
         redirect: "follow",
       });
-      const body = Buffer.from(await upstream.arrayBuffer());
+
+      if (isLeaderboard && isRead && quarantined.size > 0) {
+        const payload = JSON.parse(await upstream.text());
+        const filtered = policy.filterLeaderboardPayload(payload, quarantined);
+        const filteredBody = Buffer.from(JSON.stringify(filtered.payload));
+        res.writeHead(upstream.status, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+          "content-length": filteredBody.length,
+          "x-leaderboard-quarantined": String(filtered.removed),
+        });
+        return res.end(filteredBody);
+      }
+
+      const responseBody = Buffer.from(await upstream.arrayBuffer());
       res.writeHead(upstream.status, {
         "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "content-length": body.length,
+        "content-length": responseBody.length,
       });
-      res.end(body);
+      res.end(responseBody);
     } catch (err) {
       send(res, 502, `Upstream unavailable: ${err.message}`, {
         "content-type": "text/plain; charset=utf-8",

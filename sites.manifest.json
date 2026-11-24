@@ -6,6 +6,16 @@
       "name": "index.js",
       "type": "esm",
       "path": "./worker/index.js"
+    },
+    {
+      "name": "leaderboard-policy.mjs",
+      "type": "esm",
+      "path": "./worker/leaderboard-policy.mjs"
+    },
+    {
+      "name": "leaderboard-quarantine.mjs",
+      "type": "esm",
+      "path": "./worker/leaderboard-quarantine.mjs"
     }
   ],
   "assetsDirectory": "./dist",

@@ -7,6 +7,7 @@
     "build": "node scripts/build-site.js",
     "test": "node scripts/run-tests.js && node scripts/test-multiplayer.js",
     "verify:deploy": "node scripts/verify-deploy.js",
+    "audit:leaderboard": "node scripts/audit-leaderboard.js",
     "update-fallbacks": "node scripts/update-track-fallbacks.js"
   }
 }
