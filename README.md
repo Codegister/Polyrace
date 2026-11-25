@@ -172,7 +172,19 @@ one bucket per second:
   Safari has no memory API, so read the JS heap from the Web Inspector memory
   timeline and the JSON records `heap.supported: false`;
 * `summary.streaming.mode/drawn/instances` and `buckets[].mode/drawn` confirm
-  the window is active in run B.
+  the window is active in run B;
+* `buckets[].packsDelta/pending/sliceMsLast/sliceMsMax` — how many re-packs the
+  second did and what the worst sliced upload cost, so a hitch can be tied to
+  track work;
+* `longFrames[]` — every frame over 100 ms (up to 40) with the streaming
+  counters as they were in that frame. If `packs` and `sliceMsLast` do not move
+  across a stall, the track layer did not cause it;
+* a run B on a short track is marked `valid: false` with
+  `invalidReason: "streaming never engaged: this track has N parts…"`. Below the
+  layer's `minInstances` (3000) the track is left whole, so the run measures the
+  unstreamed path in both modes and proves nothing. Check
+  `summary.streaming.instances` — Winterfell is about 74,700 parts; a small
+  number means the race was not on the long track.
 
 The change is working when B shows far fewer `gl.instancesMean` and
 `trianglesMean` with the same `callsMean`, and its last minute does not degrade

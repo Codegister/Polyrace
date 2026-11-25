@@ -602,6 +602,14 @@ addTest("Perf A/B harness is shipped, opt-in and loaded before the game", () => 
     src.includes("if (!enabled) return;"),
     "the harness must be inert without its URL flag"
   );
+  ensure(
+    src.includes("packsDelta") && src.includes("longFrames"),
+    "buckets must record re-pack counters and the worst frames"
+  );
+  ensure(
+    src.includes("smallTrack") && src.includes("streaming never engaged"),
+    "a run where streaming never engaged must be reported invalid"
+  );
 });
 
 addTest("Perf A/B metrics are computed correctly and require no DOM", () => {

@@ -240,7 +240,9 @@
       var track = global.PolyTrackTrack;
       if (!track || typeof track.stats !== "function") return null;
       var list = track.stats();
-      var state = list && list[0];
+      // The newest registered track is the one being raced; an older state can
+      // still be around from the track-selection preview.
+      var state = list && list[list.length - 1];
       if (!state) return null;
       return {
         mode: state.mode,
@@ -249,7 +251,11 @@
         drawn: state.drawn,
         draws: state.draws,
         radius: state.radius,
-        farRadius: track.config && track.config.farRadius
+        farRadius: track.config && track.config.farRadius,
+        packs: state.packs,
+        pending: state.pending,
+        sliceMsLast: state.sliceMsLast,
+        sliceMsMax: state.sliceMsMax
       };
     } catch (err) {
       return null;
@@ -313,6 +319,7 @@
       heapStart: heapMB(),
       heapEnd: null,
       perfStart: perfSnapshot(),
+      longFrames: [],
       sawHud: false,
       invalid: null,
       streaming: null,
@@ -337,6 +344,7 @@
     if (reason === "tab hidden" || hidden) run.invalid = "tab was hidden";
     else if (!run.sawHud) run.invalid = "no race HUD during run";
     else if (reason === "left race") run.invalid = "race ended during run";
+    else if (label === "on" && smallTrack()) run.invalid = smallTrack();
     run.summary = summarize();
     run.streaming = statsSnapshot();
     lastPaint = 0;
@@ -344,6 +352,27 @@
     setStatus(
       run.invalid ? "invalid: " + run.invalid : "done",
       run.invalid ? "re-run this session" : "copy the JSON"
+    );
+  }
+
+  // A run on a short track says nothing about the streamed path: below the
+  // layer's own threshold it leaves the track whole and never re-packs. Mark
+  // such a run invalid instead of letting it pass as an A/B result.
+  function smallTrack() {
+    var track = global.PolyTrackTrack;
+    if (!track || !track.config) return null;
+    var limit = track.config.minInstances || 3000;
+    var snapshot = run.streaming || statsSnapshot();
+    if (!snapshot || !isFinite(snapshot.instances) || snapshot.instances <= 0) {
+      return null;
+    }
+    if (snapshot.instances >= limit) return null;
+    return (
+      "streaming never engaged: this track has " +
+      snapshot.instances +
+      " parts (needs " +
+      limit +
+      "), so run B measured no windowing"
     );
   }
 
@@ -452,6 +481,7 @@
     }
 
     if (!run.bucket) {
+      var opened = statsSnapshot();
       run.bucket = {
         start: ts,
         frames: 0,
@@ -463,13 +493,30 @@
         triangles: 0,
         instancesMax: 0,
         heapMB: heapMB(),
-        drawn: null
+        drawn: null,
+        packsStart: opened ? opened.packs : null
       };
     }
     run.bucket.frames++;
     run.bucket.durations.push(dt);
     if (dt > 50) run.bucket.long50++;
-    if (dt > 100) run.bucket.long100++;
+    if (dt > 100) {
+      run.bucket.long100++;
+      // Keep the worst frames with the streaming counters as they were in
+      // them, so a hitch can be tied to a re-pack (packs/sliceMs moving) or
+      // ruled out as track work (both unchanged).
+      if (run.longFrames.length < 40) {
+        var atStall = statsSnapshot();
+        run.longFrames.push({
+          t: round((ts - run.firstFrameTs) / 1000, 2),
+          ms: round(dt, 2),
+          packs: atStall ? atStall.packs : null,
+          pending: atStall ? atStall.pending : null,
+          sliceMsLast: atStall ? atStall.sliceMsLast : null,
+          drawn: atStall ? atStall.drawn : null
+        });
+      }
+    }
     run.bucket.calls += glThisFrame.calls;
     run.bucket.instances += glThisFrame.instances;
     run.bucket.triangles += glThisFrame.triangles;
@@ -515,7 +562,13 @@
       drawn: snapshot ? snapshot.drawn : null,
       mode: snapshot ? snapshot.mode : null,
       packs: snapshot ? snapshot.packs : null,
+      packsDelta:
+        snapshot && snapshot.packs !== null && b.packsStart !== null
+          ? snapshot.packs - b.packsStart
+          : null,
       pending: snapshot ? snapshot.pending : null,
+      sliceMsLast: snapshot ? snapshot.sliceMsLast : null,
+      sliceMsMax: snapshot ? snapshot.sliceMsMax : null,
       perfIndex: perfSnapshot() ? perfSnapshot().index : null,
       heapMB: b.heapMB
     });
@@ -542,7 +595,7 @@
   function exportJSON() {
     var snapshot = run || {};
     var payload = {
-      harness: "polytrack-perf-ab/1",
+      harness: "polytrack-perf-ab/2",
       label: label,
       startedAt: snapshot.startedAt || null,
       stoppedAt: snapshot.stoppedAt || null,
@@ -562,7 +615,13 @@
         durationSec: CONFIG.duration,
         adaptiveResolution: CONFIG.adaptive,
         trackstream: label,
-        streamingDisabledByUrl: label === "off"
+        streamingDisabledByUrl: label === "off",
+        streamingVersion: global.PolyTrackTrack
+          ? global.PolyTrackTrack.version
+          : null,
+        trackParts: snapshot.summary && snapshot.summary.track
+          ? snapshot.summary.track.instances
+          : null
       },
       config: {
         radius: global.PolyTrackTrack
@@ -579,7 +638,8 @@
           : null
       },
       summary: snapshot.summary || null,
-      buckets: snapshot.buckets || []
+      buckets: snapshot.buckets || [],
+      longFrames: snapshot.longFrames || []
     };
     return JSON.stringify(payload, null, 2);
   }
