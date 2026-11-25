@@ -32,8 +32,11 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   each 1.2 s window by the *average* frame time, so a second that loses ten
   frames counts even though its median frame is still 17 ms, ignores one-off
   stalls over 100 ms, steps down at most once every 6 s, and never goes softer
-  than 60% of the device's own ratio. It climbs back only after a long run of
-  clean frames, and shows a small `Resolution NN%`
+  than 60% of the device's own ratio. It climbs back after a long run of clean
+  frames — an occasional borderline second costs one window of that credit
+  instead of resetting the run, because on a 60 Hz screen a single 55 ms frame
+  pushes an otherwise clean second just over the fast threshold — and it shows
+  a small `Resolution NN%`
   badge in the corner while the picture is softened, so a blurrier image never
   looks like a bug. No setting is changed and nothing is reloaded.
 * **Windowed track geometry.** The game builds one `InstancedMesh` per part
@@ -45,7 +48,9 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   unchanged. Small tracks (under
   3000 instances or shorter than 700 units) are left untouched, and views that
   show the whole map (menu preview, track selection, editor zoomed out) always
-  draw every part.
+  draw every part. A respawn or restart is a jump far beyond one re-pack step,
+  so its re-pack is spread over a few frames at a smaller per-frame budget
+  instead of landing in one frame on top of the game's own reset work.
 
 ### Layout
 

@@ -69,6 +69,16 @@
     behindDistance: 60,
     // Re-pack once the camera has moved this many units (or turned sharply).
     repackStep: 64,
+    // A single-frame move this long is a respawn, a race restart or a jump,
+    // not driving: the whole window becomes invalid at once, and on a real
+    // device the re-pack lands in the same frame as the game's own reset work.
+    jumpStep: 320,
+    // After such a jump the re-pack is spread with this budget first, so the
+    // burst does not stack on top of the reset, then finishes at the normal
+    // uploadBytesPerFrame. 0 keeps the normal budget.
+    jumpBytesPerFrame: 64 * 1024,
+    // How many frames keep that smaller budget after a jump.
+    jumpSettleFrames: 6,
     // A re-pack replaces every drawn instance table, which used to mean one
     // multi-megabyte upload in a single frame (the hitch felt at some points).
     // Spread it over frames: each frame re-packs groups until it has queued
@@ -155,6 +165,7 @@
       packs: 0,
       sliceMsLast: 0,
       sliceMsMax: 0,
+      settleFrames: 0,
       lastCamera: null,
       lastPackX: null,
       lastPackZ: null,
@@ -383,6 +394,17 @@
     return write;
   }
 
+  // Per-frame re-pack budget: the normal one, cut to the settle budget while a
+  // jump's re-pack is still being spread out.
+  function budgetFor(state) {
+    var budget =
+      CONFIG.uploadBytesPerFrame > 0 ? CONFIG.uploadBytesPerFrame : Infinity;
+    if (state.settleFrames > 0 && CONFIG.jumpBytesPerFrame > 0) {
+      budget = Math.min(budget, CONFIG.jumpBytesPerFrame);
+    }
+    return budget;
+  }
+
   function beginPack(state, camera, spread) {
     var p = packParams(state, camera);
     if (!p) return;
@@ -399,11 +421,7 @@
     state.lastForwardX = p.forwardX;
     state.lastForwardZ = p.forwardZ;
     state.lastPackCamera = camera;
-    var budget =
-      spread && CONFIG.uploadBytesPerFrame > 0
-        ? CONFIG.uploadBytesPerFrame
-        : Infinity;
-    pump(state, budget);
+    pump(state, spread ? budgetFor(state) : Infinity);
   }
 
   // Apply the pending re-pack a few groups at a time, so a long track never
@@ -429,6 +447,7 @@
     var slice = now() - started;
     state.sliceMsLast = slice;
     if (slice > state.sliceMsMax) state.sliceMsMax = slice;
+    if (state.settleFrames > 0) state.settleFrames -= 1;
     if (job.index >= groups.length) {
       state.job = null;
       log("window packed", state.drawn, "of", state.total, "instances");
@@ -479,11 +498,17 @@
       return;
     }
 
-    var moved =
-      state.lastPackX === null ||
-      (position.x - state.lastPackX) * (position.x - state.lastPackX) +
-        (position.z - state.lastPackZ) * (position.z - state.lastPackZ) >=
-        Math.max(1, CONFIG.repackStep) * Math.max(1, CONFIG.repackStep);
+    var step = Math.max(1, CONFIG.repackStep);
+    var moved2 =
+      state.lastPackX === null
+        ? Infinity
+        : (position.x - state.lastPackX) * (position.x - state.lastPackX) +
+          (position.z - state.lastPackZ) * (position.z - state.lastPackZ);
+    var moved = moved2 >= step * step;
+    // Far beyond a re-pack step in a single frame: a respawn, a restart or a
+    // jump emptied the window, and the re-pack must not burst into one frame.
+    var jump = Math.max(step * 4, CONFIG.jumpStep);
+    var jumped = moved2 >= jump * jump;
     if (!moved && state.mode === "windowed") {
       // A sharp turn changes what "ahead" means even without moving.
       if (typeof camera.getWorldDirection === "function") {
@@ -501,15 +526,20 @@
       }
     }
     var spreading = spread === true && state.mode === "windowed";
+    // A re-pack already under way keeps going: it was frozen a moment ago, and
+    // restarting it would scan every group again from the first one. Only a
+    // jump makes its frozen window useless.
+    if (state.job && !jumped) {
+      pump(state, spreading ? budgetFor(state) : Infinity);
+      return;
+    }
     if (moved || state.mode !== "windowed") {
+      if (jumped && CONFIG.jumpSettleFrames > 0) {
+        state.settleFrames = CONFIG.jumpSettleFrames;
+      }
       beginPack(state, camera, spreading);
     } else {
-      pump(
-        state,
-        spreading && CONFIG.uploadBytesPerFrame > 0
-          ? CONFIG.uploadBytesPerFrame
-          : Infinity
-      );
+      pump(state, spreading ? budgetFor(state) : Infinity);
     }
   }
 

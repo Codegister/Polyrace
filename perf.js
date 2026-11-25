@@ -43,7 +43,12 @@
  *     was 35% of native, which real-device runs showed buys no frames on a
  *     device limited by draw calls rather than pixels, only a blurry picture;
  *   - only a sustained run of fast windows steps back up, and never within
- *     RECOVER_HOLD_MS of a step down;
+ *     RECOVER_HOLD_MS of a ratio change in either direction;
+ *   - an "ok" window costs one window's worth of credit instead of clearing
+ *     the run outright: on a 60 Hz screen frames quantise to 16.7 ms, so a
+ *     single 55 ms frame pushes an otherwise clean second just over the fast
+ *     threshold, and a strict streak never completed on the iPad that
+ *     exposed it - the ratio sat at its floor for two whole minutes;
  *   - the ratio never exceeds the device's real pixel ratio and never goes
  *     below MIN_RATIO;
  *   - if the browser refuses to let the property be shadowed, the script does
@@ -71,6 +76,7 @@
   var FAST_FRAME_MS = 17.0; // ~59 fps average: genuinely clean
   var SLOW_WINDOWS = 1; // react to the first bad window
   var FAST_WINDOWS = 12; // but need ~14 s of clean frames to climb back
+  var FAST_DECAY = 1; // an "ok" window takes back one window of that credit
   var STEP_COOLDOWN_MS = 6000; // one step down per 6 s at most
   var RECOVER_HOLD_MS = 4000; // never climb back straight after a step down
 
@@ -95,6 +101,18 @@
   }
 
   /**
+   * Credit towards climbing back. Fast windows add one, slow windows clear it,
+   * and an "ok" window (17-18.6 ms) gives one back instead of clearing the
+   * run: on a 60 Hz display a single borderline second must not throw away the
+   * fourteen clean ones before it, or the governor can never leave its floor.
+   */
+  function nextFastCredit(current, verdict) {
+    if (verdict === "fast") return current + 1;
+    if (verdict === "slow") return 0;
+    return Math.max(0, current - FAST_DECAY);
+  }
+
+  /**
    * Index of the softest ratio the governor may use: the lowest rung that is
    * still at least MIN_FRACTION of the device's own ratio.
    */
@@ -112,6 +130,7 @@
   global.__POLYTRACK_PERF__ = {
     buildLadder: buildLadder,
     classify: classify,
+    nextFastCredit: nextFastCredit,
     floorIndexFor: floorIndexFor,
     MIN_RATIO: MIN_RATIO,
     MAX_RATIO: MAX_RATIO,
@@ -125,6 +144,7 @@
     MIN_FRAMES: MIN_FRAMES,
     SLOW_WINDOWS: SLOW_WINDOWS,
     FAST_WINDOWS: FAST_WINDOWS,
+    FAST_DECAY: FAST_DECAY,
     RECOVER_HOLD_MS: RECOVER_HOLD_MS,
     INDICATOR_ID: INDICATOR_ID,
   };
@@ -246,10 +266,13 @@
     updateIndicator();
   }
 
-  function stepUp() {
+  function stepUp(at) {
     if (index === 0) return;
     index -= 1;
     fastWindows = 0;
+    // A sharper ratio gets the same settling time a softer one gets: one bad
+    // window straight after the climb must not undo it.
+    holdUntil = at + RECOVER_HOLD_MS;
     updateIndicator();
   }
 
@@ -271,25 +294,22 @@
     if (verdict === "slow") {
       slowWindows += 1;
       fastWindows = 0;
-    } else if (verdict === "fast") {
-      // A step down buys the device breathing room; do not spend it again on
-      // the very next window, or a borderline device would see-saw.
-      if (at < holdUntil) fastWindows = 0;
-      else fastWindows += 1;
-      slowWindows = 0;
     } else {
+      // A ratio change buys the device breathing room; do not spend it again
+      // on the very next window, or a borderline device would see-saw.
+      fastWindows = at < holdUntil ? 0 : nextFastCredit(fastWindows, verdict);
       slowWindows = 0;
-      fastWindows = 0;
     }
 
     if (slowWindows >= SLOW_WINDOWS) {
       // One step per cooldown: a bad loading screen should not walk the whole
-      // ladder, and a single dip should not cost three steps.
-      if (at - lastStepAt >= STEP_COOLDOWN_MS) {
+      // ladder, and a single dip should not cost three steps. A climb holds the
+      // ladder still for RECOVER_HOLD_MS in the same way.
+      if (at - lastStepAt >= STEP_COOLDOWN_MS && at >= holdUntil) {
         stepDown(avgMs > VERY_SLOW_FRAME_MS ? 2 : 1, at);
       }
     } else if (fastWindows >= FAST_WINDOWS) {
-      stepUp();
+      stepUp(at);
     }
   }
 

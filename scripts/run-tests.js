@@ -173,6 +173,10 @@ addTest("Page exposes title, description and readable text", () => {
     /<h1>PolyTrack<\/h1>/.test(html),
     "index.html should contain visible page text for classifiers to read"
   );
+  ensure(
+    /<p class="boot-credit">Made by Aarit A<\/p>/.test(html),
+    "the loading screen must credit the author"
+  );
 });
 
 addTest("Repo docs inside shipped directories are not published", () => {
@@ -307,6 +311,35 @@ addTest("Adaptive render scale ladder and thresholds are sane", () => {
   );
   ensure(helpers.classify(22) === "slow", "22 ms frames are starting to stutter");
   ensure(helpers.classify(60) === "slow", "collapsed frames are slow");
+
+  // An "ok" window costs one window of credit instead of clearing the run: a
+  // single borderline second must not keep the ratio at its floor all race, as
+  // the real-device run with 40 clean seconds and one climb showed.
+  ensure(helpers.FAST_DECAY >= 1, `fast decay: ${helpers.FAST_DECAY}`);
+  ensure(
+    typeof helpers.nextFastCredit === "function",
+    "perf.js must expose the fast-window credit rule"
+  );
+  ensure(
+    helpers.nextFastCredit(4, "fast") === 5 &&
+      helpers.nextFastCredit(4, "ok") === 3,
+    "an ok window must cost credit, not the whole run"
+  );
+  ensure(
+    helpers.nextFastCredit(9, "slow") === 0,
+    "a slow window must clear the credit"
+  );
+  ensure(helpers.nextFastCredit(0, "ok") === 0, "credit must never go negative");
+  let credit = 0;
+  let windows = 0;
+  while (credit < helpers.FAST_WINDOWS && windows < 200) {
+    credit = helpers.nextFastCredit(credit, windows % 5 === 4 ? "ok" : "fast");
+    windows += 1;
+  }
+  ensure(
+    credit >= helpers.FAST_WINDOWS && windows < 40,
+    `recovery must still happen with every fifth window only ok (took ${windows})`
+  );
 });
 
 addTest("Adaptive render scale shows an indicator while it reduces resolution", () => {
@@ -670,6 +703,18 @@ addTest("Perf A/B metrics are computed correctly and require no DOM", () => {
   off.window = off;
   vm.runInNewContext(src, off);
   ensure(off.PolyTrackPerfAB === undefined, "no API without ?perfab=1");
+
+  // perf.js shadows devicePixelRatio, so the recorded ratio must come from the
+  // governor's own native value or every run reports the governed one.
+  const governed = {
+    location: { search: "?perfab=1" },
+    devicePixelRatio: 1.23,
+    PolyTrackPerf: { nativeRatio: 2 }
+  };
+  governed.window = governed;
+  vm.runInNewContext(src, governed);
+  const meta = JSON.parse(governed.PolyTrackPerfAB.exportJSON()).meta;
+  ensure(meta.devicePixelRatio === 2, `native devicePixelRatio: ${meta.devicePixelRatio}`);
 });
 
 addTest("Track streaming windows instances, restores full views and releases", () => {
@@ -690,6 +735,16 @@ addTest("Track streaming windows instances, restores full views and releases", (
   ensure(api.config.farMargin >= 1, "the far cone must not be narrower than the view");
   ensure(api.config.repackStep > 0, "a repack step is required");
   ensure(api.config.behindDistance < api.config.radius, "behind distance must be small");
+  ensure(
+    api.config.jumpStep > api.config.repackStep,
+    "a jump must be longer than a re-pack step"
+  );
+  ensure(
+    api.config.jumpBytesPerFrame > 0 &&
+      api.config.jumpBytesPerFrame <= api.config.uploadBytesPerFrame,
+    "the settle budget must not exceed the normal per-frame budget"
+  );
+  ensure(api.config.jumpSettleFrames > 0, "a jump must settle over some frames");
   ensure(api.config.minInstances > 0, "a small-track threshold is required");
   ensure(api.config.minSpan > 0, "a small-track span threshold is required");
   ensure(api.config.requireRaceHud === true, "streaming must wait for the race HUD");
@@ -908,6 +963,51 @@ addTest("Track streaming windows instances, restores full views and releases", (
   ensure(spread.packs >= 2, `packs must be counted: ${spread.packs}`);
   api.config.uploadBytesPerFrame = uploadBudget;
   api.release(spreadEnv);
+
+  // A respawn is a jump far beyond a re-pack step. Its re-pack must not burst
+  // into a single frame on top of the game's own reset work, and its counts
+  // must still add up while the window is being replaced.
+  const jumpScene = makeScene();
+  const jumpEnv = { scene: jumpScene };
+  const jumpMeshes = [];
+  api.config.minInstances = 100;
+  api.config.minSpan = 100;
+  api.config.repackStep = 16;
+  api.config.jumpStep = 100;
+  api.config.uploadBytesPerFrame = 256 * 1024;
+  api.config.jumpBytesPerFrame = 64 * 1024;
+  api.config.jumpSettleFrames = 4;
+  for (let g = 0; g < 8; g++) {
+    const mesh = new FakeMesh(500);
+    jumpMeshes.push(mesh);
+    api.register(jumpEnv, mesh, null, makeParts(500, 0.5, g * 10, 0));
+  }
+  api.finalize(jumpEnv);
+  api.config.jumpSettleFrames = 0;
+  api.update(jumpEnv, cameraAt(0, 0, 0), true);
+  ensure(
+    api.stats(jumpEnv).mode === "windowed" && api.stats(jumpEnv).pending === 0,
+    "the baseline pack must finish in one frame"
+  );
+  api.config.jumpSettleFrames = 4;
+  api.update(jumpEnv, cameraAt(0, 0, 150), true);
+  let jump = api.stats(jumpEnv);
+  ensure(jump.pending > 0, `a jump must be spread over frames: ${jump.pending}`);
+  const jumpDrawn = () => jumpMeshes.reduce((sum, mesh) => sum + mesh.count, 0);
+  ensure(jump.drawn === jumpDrawn(), "drawn must match the groups already switched");
+  let jumpFrames = 0;
+  while (api.stats(jumpEnv).pending > 0 && jumpFrames < 20) {
+    api.update(jumpEnv, cameraAt(0, 0, 150), true);
+    jumpFrames += 1;
+  }
+  jump = api.stats(jumpEnv);
+  ensure(jump.pending === 0, "the jump pack must finish");
+  ensure(jumpFrames < 10, `the jump must settle quickly: ${jumpFrames} frames`);
+  ensure(jump.drawn === jumpDrawn(), "drawn must match counts after the jump pack");
+  ensure(jump.drawn < 8 * 500, "the window must still be a window after a jump");
+  api.release(jumpEnv);
+  ensure(jumpScene.items.length === 0, "the jump track must release cleanly");
+  api.config.uploadBytesPerFrame = uploadBudget;
 
   api.release(env);
   ensure(scene.items.length === 0, "release must detach every mesh from the scene");

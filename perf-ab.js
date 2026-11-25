@@ -277,6 +277,26 @@
     }
   }
 
+  // perf.js shadows `devicePixelRatio` once it governs the ratio, so reading it
+  // here would record the governed value (1.23 on the iPad) instead of the
+  // screen's own ratio (2). Record the native ratio the governor kept.
+  function nativeDpr() {
+    try {
+      var perf = global.PolyTrackPerf;
+      if (
+        perf &&
+        typeof perf.nativeRatio === "number" &&
+        isFinite(perf.nativeRatio) &&
+        perf.nativeRatio > 0
+      ) {
+        return perf.nativeRatio;
+      }
+    } catch (err) {
+      /* governor absent */
+    }
+    return global.devicePixelRatio || 1;
+  }
+
   function heapMB() {
     try {
       var memory = global.performance && global.performance.memory;
@@ -620,7 +640,7 @@
         url: global.location ? global.location.href : "",
         userAgent: global.navigator ? global.navigator.userAgent : "",
         platform: global.navigator ? global.navigator.platform : "",
-        devicePixelRatio: global.devicePixelRatio || 1,
+        devicePixelRatio: nativeDpr(),
         screen: global.screen
           ? { width: global.screen.width, height: global.screen.height }
           : null,
