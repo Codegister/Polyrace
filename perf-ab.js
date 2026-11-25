@@ -413,6 +413,11 @@
       Math.max(1, CONFIG.duration - 60),
       CONFIG.duration
     );
+    // The first seconds are track load, shader compilation and the first
+    // re-packs, and they dominate a short or one-lap run. They stay in the
+    // summary, but the steady window is what two runs should be compared on.
+    summary.startup = windowStats(0, 10);
+    summary.steady = windowStats(10, Number.MAX_VALUE);
     if (summary.firstMinute && summary.lastMinute) {
       summary.trend = {
         fpsRatio:

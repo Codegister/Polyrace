@@ -634,6 +634,11 @@ addTest("Perf A/B harness is shipped, opt-in and loaded before the game", () => 
       src.indexOf("function startRun()"),
     "startRun must clear a hidden tab flag left over from an earlier run"
   );
+  ensure(
+    src.includes("summary.startup = windowStats(0, 10)") &&
+      src.includes("summary.steady = windowStats(10"),
+    "the start-up seconds must be reported apart from the steady window"
+  );
 });
 
 addTest("Perf A/B metrics are computed correctly and require no DOM", () => {

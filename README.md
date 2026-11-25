@@ -170,6 +170,10 @@ one bucket per second:
   `long.perMinute` and `dropped` against the display refresh;
 * `summary.gl.callsMean/instancesMean/trianglesMean` — counted by wrapping the
   WebGL draw calls, so they work in both modes without the game's help;
+* `summary.startup` (first 10 s) and `summary.steady` (from 10 s on) — fps, p95,
+  >50 ms frames per minute and drop percentage for each. The first seconds are
+  track load, shader compilation and the first re-packs, so compare runs on
+  `steady` when one is shorter than the other or was started late;
 * `summary.firstMinute`, `summary.lastMinute` and `summary.trend` (fps and p95
   ratio) — the progressive-slowdown signal;
 * `summary.heap` when `performance.memory` exists (Chromium browsers); iOS
