@@ -28,8 +28,12 @@ This checkout is wired up as a self‑contained, hostable mirror of the game:
   without it the page has zero text.
 * **Adaptive render resolution.** `perf.js` watches frame pacing and lowers the
   game's effective pixel ratio as soon as a device starts dropping frames — the
-  situation behind stutter late in long races on high-density screens. It climbs
-  back only after a long run of clean frames, and shows a small `Resolution NN%`
+  situation behind stutter late in long races on high-density screens. It judges
+  each 1.2 s window by the *average* frame time, so a second that loses ten
+  frames counts even though its median frame is still 17 ms, ignores one-off
+  stalls over 100 ms, steps down at most once every 6 s, and never goes softer
+  than 60% of the device's own ratio. It climbs back only after a long run of
+  clean frames, and shows a small `Resolution NN%`
   badge in the corner while the picture is softened, so a blurrier image never
   looks like a bug. No setting is changed and nothing is reloaded.
 * **Windowed track geometry.** The game builds one `InstancedMesh` per part

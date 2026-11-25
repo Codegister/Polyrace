@@ -18,17 +18,30 @@
  * device's native value, so the picture is only softer while the device
  * actually needs it.
  *
+ * Pacing is judged by the average frame time of a window, not by the median.
+ * A second that drops ten frames on a 60 Hz display has a median of 17 ms but
+ * an average of 19-20 ms, which is exactly the stutter a player feels; a
+ * median-based rule sees a clean second and does nothing. Frames longer than
+ * MAX_FRAME_MS are stalls (GC, a shader compile), not pacing, so they are left
+ * out of the average rather than blamed on the resolution.
+ *
  * Asymmetric on purpose: it reacts quickly to a drop (one slow window is
  * enough, a very slow one takes a double step) but recovers slowly, because a
- * device that was struggling a moment ago usually still is. While the ratio is
- * reduced a small badge in the corner says so, so a softer picture never looks
- * like a bug.
+ * device that was struggling a moment ago usually still is. It also may not
+ * speed-walk down the ladder: a slow window can step only once per
+ * STEP_COOLDOWN_MS, so a heavy loading screen costs at most one step instead
+ * of four in a row. While the ratio is reduced a small badge in the corner
+ * says so, so a softer picture never looks like a bug.
  *
  * Deliberately careful:
  *   - nothing changes during the first seconds, while shaders and models are
  *     still being uploaded;
  *   - a window needs a real sample count before it can trigger a step, so
  *     loading hitches, hidden tabs and a single long frame are ignored;
+ *   - the softest setting is a fixed fraction of the device's own ratio, not
+ *     an absolute pixel ratio: on a 2x screen the old absolute floor of 0.7
+ *     was 35% of native, which real-device runs showed buys no frames on a
+ *     device limited by draw calls rather than pixels, only a blurry picture;
  *   - only a sustained run of fast windows steps back up, and never within
  *     RECOVER_HOLD_MS of a step down;
  *   - the ratio never exceeds the device's real pixel ratio and never goes
@@ -46,17 +59,19 @@
   var MIN_RATIO = 0.7;
   var MAX_RATIO = 2;
   var STEP_FACTOR = 0.85;
+  var MIN_FRACTION = 0.6; // never softer than 60% of the device's own ratio
 
   var WINDOW_MS = 1200;
   var WARMUP_MS = 2500;
   var MIN_FRAMES = 8;
-  var MAX_FRAME_MS = 250;
+  var MAX_FRAME_MS = 100; // longer than this is a stall, not frame pacing
 
-  var SLOW_FRAME_MS = 21; // ~48 fps: visibly dropping frames
+  var SLOW_FRAME_MS = 18.6; // ~54 fps average: the picture is already slipping
   var VERY_SLOW_FRAME_MS = 33; // ~30 fps: take a bigger step
-  var FAST_FRAME_MS = 17.2; // essentially vsynced at 60 Hz
+  var FAST_FRAME_MS = 17.0; // ~59 fps average: genuinely clean
   var SLOW_WINDOWS = 1; // react to the first bad window
-  var FAST_WINDOWS = 8; // but need ~10 s of clean frames to climb back
+  var FAST_WINDOWS = 12; // but need ~14 s of clean frames to climb back
+  var STEP_COOLDOWN_MS = 6000; // one step down per 6 s at most
   var RECOVER_HOLD_MS = 4000; // never climb back straight after a step down
 
   var INDICATOR_ID = "perf-indicator";
@@ -73,10 +88,23 @@
     return ladder;
   }
 
-  function classify(medianMs) {
-    if (medianMs > SLOW_FRAME_MS) return "slow";
-    if (medianMs < FAST_FRAME_MS) return "fast";
+  function classify(avgMs) {
+    if (avgMs > SLOW_FRAME_MS) return "slow";
+    if (avgMs < FAST_FRAME_MS) return "fast";
     return "ok";
+  }
+
+  /**
+   * Index of the softest ratio the governor may use: the lowest rung that is
+   * still at least MIN_FRACTION of the device's own ratio.
+   */
+  function floorIndexFor(ladderValues, native) {
+    var floor = Math.max(MIN_RATIO, Math.round(native * MIN_FRACTION * 100) / 100);
+    var last = 0;
+    for (var i = 0; i < ladderValues.length; i++) {
+      if (ladderValues[i] >= floor - 0.001) last = i;
+    }
+    return last;
   }
 
   // Exposed so the test suite can check the ladder and thresholds without a
@@ -84,8 +112,11 @@
   global.__POLYTRACK_PERF__ = {
     buildLadder: buildLadder,
     classify: classify,
+    floorIndexFor: floorIndexFor,
     MIN_RATIO: MIN_RATIO,
     MAX_RATIO: MAX_RATIO,
+    MIN_FRACTION: MIN_FRACTION,
+    STEP_COOLDOWN_MS: STEP_COOLDOWN_MS,
     SLOW_FRAME_MS: SLOW_FRAME_MS,
     VERY_SLOW_FRAME_MS: VERY_SLOW_FRAME_MS,
     FAST_FRAME_MS: FAST_FRAME_MS,
@@ -108,6 +139,7 @@
   if (!(nativeRatio > 0)) nativeRatio = 1;
 
   var ladder = buildLadder(nativeRatio);
+  var maxIndex = floorIndexFor(ladder, nativeRatio);
   var index = 0;
   var enabled = true;
   var passthrough = false;
@@ -143,6 +175,7 @@
   var fastWindows = 0;
   var startedAt = now();
   var holdUntil = 0;
+  var lastStepAt = 0;
 
   // The badge only exists while the ratio is reduced, and it never takes input.
   var indicator = null;
@@ -189,13 +222,10 @@
     el.style.opacity = "1";
   }
 
-  function median(values) {
-    var sorted = values.slice().sort(function (a, b) {
-      return a - b;
-    });
-    var middle = sorted.length >> 1;
-    if (sorted.length % 2) return sorted[middle];
-    return (sorted[middle - 1] + sorted[middle]) / 2;
+  function mean(values) {
+    var total = 0;
+    for (var i = 0; i < values.length; i++) total += values[i];
+    return values.length ? total / values.length : 0;
   }
 
   function resetWindow(at) {
@@ -206,9 +236,10 @@
   }
 
   function stepDown(amount, at) {
-    var next = Math.min(ladder.length - 1, index + amount);
+    var next = Math.min(maxIndex, index + amount);
     if (next === index) return;
     index = next;
+    lastStepAt = at;
     slowWindows = 0;
     fastWindows = 0;
     holdUntil = at + RECOVER_HOLD_MS;
@@ -224,7 +255,7 @@
 
   function evaluate(at) {
     var count = samples.length;
-    var medianMs = count > 0 ? median(samples) : 0;
+    var avgMs = mean(samples);
     samples.length = 0;
     windowStart = at;
 
@@ -236,7 +267,7 @@
       return;
     }
 
-    var verdict = classify(medianMs);
+    var verdict = classify(avgMs);
     if (verdict === "slow") {
       slowWindows += 1;
       fastWindows = 0;
@@ -252,7 +283,11 @@
     }
 
     if (slowWindows >= SLOW_WINDOWS) {
-      stepDown(medianMs > VERY_SLOW_FRAME_MS ? 2 : 1, at);
+      // One step per cooldown: a bad loading screen should not walk the whole
+      // ladder, and a single dip should not cost three steps.
+      if (at - lastStepAt >= STEP_COOLDOWN_MS) {
+        stepDown(avgMs > VERY_SLOW_FRAME_MS ? 2 : 1, at);
+      }
     } else if (fastWindows >= FAST_WINDOWS) {
       stepUp();
     }

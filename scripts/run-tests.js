@@ -271,7 +271,22 @@ addTest("Adaptive render scale ladder and thresholds are sane", () => {
 
   ensure(helpers.classify(40) === "slow", "40 ms frames are slow");
   ensure(helpers.classify(16.7) === "fast", "60 Hz frames are fast");
-  ensure(helpers.classify(20) === "ok", "in-between frames change nothing");
+  ensure(
+    helpers.classify(20) === "slow",
+    "a 50 fps average (10 dropped frames a second) must count as slow"
+  );
+  ensure(helpers.classify(18.5) === "ok", "in-between frames change nothing");
+
+  // The floor is relative to the device: real-device A/B runs showed the old
+  // absolute 0.7 rung was 35% of native on a 2x screen, soft yet no faster.
+  const twoX = helpers.buildLadder(2);
+  const twoXFloor = helpers.floorIndexFor(twoX, 2);
+  ensure(twoX[twoXFloor] >= 1.2, `2x floor: ${twoX[twoXFloor]} of ${twoX[0]}`);
+  ensure(twoXFloor > 0, "a 2x screen must still be allowed to soften");
+  ensure(
+    helpers.STEP_COOLDOWN_MS >= 4000,
+    `step cooldown: ${helpers.STEP_COOLDOWN_MS} ms must throttle the ladder`
+  );
 
   // It must react to the first bad window but take many clean windows (and a
   // pause after stepping down) before it climbs back.
