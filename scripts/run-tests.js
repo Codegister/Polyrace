@@ -610,6 +610,15 @@ addTest("Perf A/B harness is shipped, opt-in and loaded before the game", () => 
     src.includes("smallTrack") && src.includes("streaming never engaged"),
     "a run where streaming never engaged must be reported invalid"
   );
+  ensure(
+    src.includes("camX") && src.includes("camZ"),
+    "buckets must record the car position so dips can be compared by place"
+  );
+  ensure(
+    src.indexOf("hidden = false;", src.indexOf("function startRun()")) >
+      src.indexOf("function startRun()"),
+    "startRun must clear a hidden tab flag left over from an earlier run"
+  );
 });
 
 addTest("Perf A/B metrics are computed correctly and require no DOM", () => {

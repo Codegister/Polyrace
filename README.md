@@ -176,6 +176,12 @@ one bucket per second:
 * `buckets[].packsDelta/pending/sliceMsLast/sliceMsMax` — how many re-packs the
   second did and what the worst sliced upload cost, so a hitch can be tied to
   track work;
+* `buckets[].camX/camZ` — where the car was at the end of that second, so a slow
+  second in A and in B can be checked against the same place on the track;
+* a run interrupted by a hidden tab is stopped at that moment and marked
+  `valid: false` with `invalidReason: "tab was hidden"` (a hidden tab pauses
+  animation frames, so its timing is not usable). The flag is cleared when a new
+  run starts: start a fresh run instead of trusting the partial one;
 * `longFrames[]` — every frame over 100 ms (up to 40) with the streaming
   counters as they were in that frame. If `packs` and `sliceMsLast` do not move
   across a stall, the track layer did not cause it;

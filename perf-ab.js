@@ -255,7 +255,8 @@
         packs: state.packs,
         pending: state.pending,
         sliceMsLast: state.sliceMsLast,
-        sliceMsMax: state.sliceMsMax
+        sliceMsMax: state.sliceMsMax,
+        camera: state.camera || null
       };
     } catch (err) {
       return null;
@@ -292,6 +293,10 @@
 
   function startRun() {
     if (run && run.running) return;
+    // A hidden tab stops the run (rAF pauses, so the timing would be wrong).
+    // The flag must not survive into the next run of the same page session,
+    // or a single interruption marks every later run invalid as well.
+    hidden = false;
     run = {
       running: true,
       startedAt: new Date().toISOString(),
@@ -570,6 +575,10 @@
       sliceMsLast: snapshot ? snapshot.sliceMsLast : null,
       sliceMsMax: snapshot ? snapshot.sliceMsMax : null,
       perfIndex: perfSnapshot() ? perfSnapshot().index : null,
+      camX:
+        snapshot && snapshot.camera ? round(snapshot.camera.x, 1) : null,
+      camZ:
+        snapshot && snapshot.camera ? round(snapshot.camera.z, 1) : null,
       heapMB: b.heapMB
     });
     if (snapshot) {
