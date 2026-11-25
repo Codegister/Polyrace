@@ -20,10 +20,7 @@
  *
  * Asymmetric on purpose: it reacts quickly to a drop (one slow window is
  * enough, a very slow one takes a double step) but recovers slowly, because a
- * device that was struggling a moment ago usually still is. The window is short
- * (0.7 s) and the slow threshold sits just above vsync (19 ms, ~52 fps) so a
- * 45-50 fps spell is caught inside the second it happens instead of falling in
- * the dead band between "ok" and "slow". While the ratio is
+ * device that was struggling a moment ago usually still is. While the ratio is
  * reduced a small badge in the corner says so, so a softer picture never looks
  * like a bug.
  *
@@ -50,16 +47,16 @@
   var MAX_RATIO = 2;
   var STEP_FACTOR = 0.85;
 
-  var WINDOW_MS = 700;
+  var WINDOW_MS = 1200;
   var WARMUP_MS = 2500;
   var MIN_FRAMES = 8;
   var MAX_FRAME_MS = 250;
 
-  var SLOW_FRAME_MS = 19; // ~52 fps: a 45-50 fps spell must not look "ok"
+  var SLOW_FRAME_MS = 21; // ~48 fps: visibly dropping frames
   var VERY_SLOW_FRAME_MS = 33; // ~30 fps: take a bigger step
   var FAST_FRAME_MS = 17.2; // essentially vsynced at 60 Hz
   var SLOW_WINDOWS = 1; // react to the first bad window
-  var FAST_WINDOWS = 16; // ~11 s of clean frames before it climbs back
+  var FAST_WINDOWS = 8; // but need ~10 s of clean frames to climb back
   var RECOVER_HOLD_MS = 4000; // never climb back straight after a step down
 
   var INDICATOR_ID = "perf-indicator";
