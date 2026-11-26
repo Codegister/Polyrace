@@ -40084,7 +40084,11 @@ var KT, qT, YT, XT, ZT, JT, $T, eC, tC, nC, iC, rC, aC, sC, oC, lC, cC, hC, dC, 
                 n.addProgressListener((e => {
                     s.style.width = (100 * e).toString() + "%"
                 }
-                ))
+                ));
+                const o = document.createElement("p");
+                o.className = "loading-credit",
+                o.textContent = "Made by Aarit A",
+                qR(this, QR, "f").appendChild(o)
             }
             fadeOut(e) {
                 qR(this, QR, "f").classList.add("fade-out"),

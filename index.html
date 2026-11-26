@@ -78,6 +78,19 @@
                 letter-spacing: 1px;
                 opacity: 0.55;
             }
+            /* Author credit under the in-game loading bar. It is a child of
+               .loading-ui, so it fades out and is removed in the same step as
+               the bar itself; the #ui prefix outranks the bundle's rule. */
+            #ui .loading-ui > p.loading-credit {
+                margin: 18px 0 0 0;
+                padding: 0;
+                color: #ffffff;
+                font-family: ForcedSquare, Arial, sans-serif;
+                font-size: 22px;
+                font-weight: normal;
+                line-height: 1.2;
+                letter-spacing: 1px;
+            }
             #boot-noscript {
                 margin: 0;
                 padding: 24px;

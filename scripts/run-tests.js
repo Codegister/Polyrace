@@ -179,6 +179,23 @@ addTest("Page exposes title, description and readable text", () => {
   );
 });
 
+addTest("The in-game loading bar credits the author", () => {
+  const bundle = fs.readFileSync(path.join(repoRoot, "main.bundle.js"), "utf8");
+  const html = fs.readFileSync(path.join(repoRoot, "index.html"), "utf8");
+  ensure(
+    bundle.includes('o.textContent = "Made by Aarit A"'),
+    "main.bundle.js must add the author credit to the loading screen"
+  );
+  ensure(
+    bundle.includes('o.className = "loading-credit"'),
+    "the credit must be its own element so it fades with the loading bar"
+  );
+  ensure(
+    /#ui \.loading-ui > p\.loading-credit \{[^}]*color: #ffffff/.test(html),
+    "index.html must render the credit as white text under the bar"
+  );
+});
+
 addTest("Repo docs inside shipped directories are not published", () => {
   const buildScript = fs.readFileSync(path.join(repoRoot, "scripts", "build-site.js"), "utf8");
   ensure(
